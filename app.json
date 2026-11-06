@@ -28,6 +28,12 @@
       "expo-secure-store",
       "expo-font",
       "expo-splash-screen"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5687aac2-6e59-493e-be28-ea2f0916cbc4"
+      }
+    },
+    "owner": "devilsbreath39"
   }
 }
