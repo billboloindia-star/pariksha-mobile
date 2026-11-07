@@ -111,7 +111,9 @@ export default function ProfileScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView style={{ flex: 1, backgroundColor: color.canvas }} contentContainerStyle={{ paddingBottom: space.xxl }}>
-        <LinearGradient colors={["#0a1b36", "#1d4ed8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+        <LinearGradient colors={["#1d0f3a", "#4a2a8a", "#6f42c1", "#9b7bd8"]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={styles.hero}>
+          <View style={styles.heroBlob1} />
+          <View style={styles.heroBlob2} />
           <View style={styles.avatarWrap}>
             {session?.avatarUrl ? (
               <Image source={{ uri: session.avatarUrl }} style={styles.avatarImg} />
@@ -187,7 +189,13 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: "center", paddingTop: 72, paddingBottom: 28, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl },
+  hero: {
+    alignItems: "center", paddingTop: 72, paddingBottom: 28,
+    borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl,
+    overflow: "hidden", position: "relative",
+  },
+  heroBlob1: { position: "absolute", width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(198,168,245,0.3)", top: -70, right: -40 },
+  heroBlob2: { position: "absolute", width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(95,212,255,0.16)", bottom: -60, left: "25%" },
   avatarWrap: { position: "relative" },
   avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: "rgba(255,255,255,0.14)", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)", alignItems: "center", justifyContent: "center" },
   avatarImg: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },

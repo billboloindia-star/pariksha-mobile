@@ -12,9 +12,9 @@ import { parsePaper } from "../../shared/paper";
 import { demoPaper } from "../../shared/aiPrompt";
 import type { AttemptRecord, LibraryItem } from "../../shared/types";
 import { useSession } from "../session/SessionContext";
-import { color, font, radius, space, shadow } from "../theme";
+import { color, font, radius, space, shadow, gradient } from "../theme";
 import HaloRing from "../components/HaloRing";
-import { BellIcon, UploadIcon, BoltIcon } from "../components/icons";
+import { UploadIcon, BoltIcon } from "../components/icons";
 import type { MainTabParamList } from "../navigation/MainTabs";
 import type { RootStackParamList } from "../navigation/types";
 
@@ -59,6 +59,11 @@ export default function HomeScreen() {
   const first = (session?.email.split("@")[0] ?? "there").replace(/[._-].*$/, "");
   const greeting = first.charAt(0).toUpperCase() + first.slice(1);
 
+  const attemptCount = (history ?? []).length;
+  const accuracies = (history ?? []).map((h) => h.accuracy).filter((a): a is number => typeof a === "number");
+  const bestAccuracy = accuracies.length ? Math.round(Math.max(...accuracies)) : null;
+  const examsCovered = new Set((history ?? []).map((h) => h.exam || "General")).size;
+
   async function onUpload() {
     const res = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "image/*"], multiple: true, copyToCacheDirectory: true });
     if (res.canceled || !res.assets.length) return;
@@ -102,26 +107,51 @@ export default function HomeScreen() {
       style={{ flex: 1, backgroundColor: color.canvas }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.royal} />}
     >
-      <View style={styles.headRow}>
-        <View>
-          <Text style={styles.greetingSmall}>Good {timeOfDay()}</Text>
-          <Text style={styles.greetingName}>{greeting} 👋</Text>
-        </View>
-        <Pressable style={styles.bell}>
-          <BellIcon color={color.ink} />
-        </Pressable>
-      </View>
-
-      {streak > 0 && (
-        <View style={styles.streakPill}>
-          <Text style={styles.streakEmoji}>🔥</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.streakText}>{streak}-day streak</Text>
-            <Text style={styles.streakSub}>Keep going today</Text>
+      <LinearGradient colors={gradient.hero.colors} start={gradient.hero.start} end={gradient.hero.end} style={styles.hero}>
+        <View style={styles.heroEyebrowRow}>
+          <View style={styles.liveEyebrow}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveEyebrowText}>Ready when you are</Text>
           </View>
-          <View style={styles.liveDot} />
+          {streak > 0 && (
+            <View style={styles.streakBadge}>
+              <Text style={styles.streakBadgeEmoji}>🔥</Text>
+              <Text style={styles.streakBadgeText}>{streak}d streak</Text>
+            </View>
+          )}
         </View>
-      )}
+        <Text style={styles.heroGreeting}>Good {timeOfDay()}, {greeting}</Text>
+        <Text style={styles.heroH1}>Start a new{"\n"}mock test</Text>
+        <Text style={styles.heroLead}>Pick a paper from your files, paste one, or use a demo — then sit it exactly like exam day.</Text>
+
+        <View style={styles.heroCtaRow}>
+          <Pressable style={styles.heroCtaPrimary} onPress={onUpload} disabled={uploading}>
+            <Text style={styles.heroCtaPrimaryText}>{uploading ? "Uploading…" : "Start now →"}</Text>
+          </Pressable>
+          <Pressable style={styles.heroCtaGhost} onPress={loadDemo}>
+            <Text style={styles.heroCtaGhostText}>Try a demo</Text>
+          </Pressable>
+        </View>
+
+        {attemptCount > 0 && (
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStatGlass}>
+              <Text style={styles.heroStatGlassValue}>{attemptCount}</Text>
+              <Text style={styles.heroStatGlassLabel}>Attempts</Text>
+            </View>
+            {bestAccuracy !== null && (
+              <View style={styles.heroStatGlass}>
+                <Text style={styles.heroStatGlassValue}>{bestAccuracy}%</Text>
+                <Text style={styles.heroStatGlassLabel}>Best accuracy</Text>
+              </View>
+            )}
+            <View style={styles.heroStatGlass}>
+              <Text style={styles.heroStatGlassValue}>{examsCovered}</Text>
+              <Text style={styles.heroStatGlassLabel}>Exam{examsCovered === 1 ? "" : "s"} covered</Text>
+            </View>
+          </View>
+        )}
+      </LinearGradient>
 
       {api.canUseBankFeature(session) && (
         <LinearGradient
@@ -217,10 +247,11 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <View style={styles.statsRow}>
-        <StatCard label="Attempts" value={String((history ?? []).length)} />
-        <StatCard label="Recent papers" value={String((library ?? []).length)} />
-      </View>
+      {library !== null && library.length > 0 && (
+        <View style={styles.statsRow}>
+          <StatCard label="Papers in your Vault" value={String(library.length)} />
+        </View>
+      )}
 
       <View style={{ height: space.xxl }} />
     </ScrollView>
@@ -244,20 +275,26 @@ function timeOfDay(): string {
 }
 
 const styles = StyleSheet.create({
-  headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: space.xl, paddingTop: 64, paddingBottom: space.lg },
-  greetingSmall: { fontFamily: font.body, fontSize: 14, color: color.inkDim },
-  greetingName: { fontFamily: font.displayBlack, fontSize: 26, color: color.ink },
-  bell: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: color.surface, alignItems: "center", justifyContent: "center", ...shadow.soft },
-
-  streakPill: {
-    flexDirection: "row", alignItems: "center", gap: space.sm,
-    marginHorizontal: space.xl, backgroundColor: color.amberBg, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: "#f3dcae", padding: space.md, marginBottom: space.lg,
-  },
-  streakEmoji: { fontSize: 22 },
-  streakText: { fontFamily: font.bodySemibold, fontSize: 15, color: color.amberDeep },
-  streakSub: { fontFamily: font.body, fontSize: 12, color: color.inkDim },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.amber },
+  hero: { paddingHorizontal: space.xl, paddingTop: 64, paddingBottom: space.xl, marginBottom: space.lg },
+  heroEyebrowRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: space.md },
+  liveEyebrow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  liveDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: color.sky },
+  liveEyebrowText: { fontFamily: font.bodySemibold, fontSize: 11, letterSpacing: 0.4, color: "#bfe0ff" },
+  streakBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.14)", borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  streakBadgeEmoji: { fontSize: 12 },
+  streakBadgeText: { fontFamily: font.bodySemibold, fontSize: 11, color: color.white },
+  heroGreeting: { fontFamily: font.body, fontSize: 13, color: "#bfe0ff", marginBottom: 4 },
+  heroH1: { fontFamily: font.displayBlack, fontSize: 30, color: color.white, lineHeight: 34, marginBottom: space.sm },
+  heroLead: { fontFamily: font.body, fontSize: 13, color: "rgba(255,255,255,0.8)", lineHeight: 19, marginBottom: space.lg },
+  heroCtaRow: { flexDirection: "row", gap: space.sm, marginBottom: space.lg },
+  heroCtaPrimary: { flex: 1.3, backgroundColor: color.white, borderRadius: radius.pill, paddingVertical: 13, alignItems: "center" },
+  heroCtaPrimaryText: { fontFamily: font.bodySemibold, fontSize: 14, color: color.inkNavy900 },
+  heroCtaGhost: { flex: 1, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.4)", borderRadius: radius.pill, paddingVertical: 13, alignItems: "center" },
+  heroCtaGhostText: { fontFamily: font.bodySemibold, fontSize: 14, color: color.white },
+  heroStatsRow: { flexDirection: "row", gap: space.sm },
+  heroStatGlass: { flex: 1, backgroundColor: "rgba(255,255,255,0.12)", borderRadius: radius.md, padding: space.md, alignItems: "center" },
+  heroStatGlassValue: { fontFamily: font.monoBold, fontSize: 17, color: color.white },
+  heroStatGlassLabel: { fontFamily: font.body, fontSize: 9.5, color: "rgba(255,255,255,0.8)", marginTop: 2, textAlign: "center" },
 
   speedCard: {
     marginHorizontal: space.xl, borderRadius: radius.lg, marginBottom: space.lg, overflow: "hidden", ...shadow.card,
