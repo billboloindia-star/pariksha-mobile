@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Image, Linking } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert, Image, Linking, Modal, Platform } from "react-native";
+import { WebView } from "react-native-webview";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
@@ -41,6 +42,7 @@ export default function VaultDetailScreen() {
   const [fileLinks, setFileLinks] = useState<LibraryFileLink[] | null>(null);
   const [linksError, setLinksError] = useState("");
   const [previewing, setPreviewing] = useState<LibraryFileLink | null>(null);
+  const [pdfViewer, setPdfViewer] = useState<LibraryFileLink | null>(null);
   const [pasted, setPasted] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -133,6 +135,7 @@ export default function VaultDetailScreen() {
   const activeIsImage = activeMeta ? isImageType(activeMeta.fileType) : false;
 
   return (
+    <>
     <ScrollView style={{ flex: 1, backgroundColor: color.canvas }} contentContainerStyle={{ padding: space.xl, paddingTop: 56, paddingBottom: space.xxl }}>
       <Pressable onPress={() => navigation.goBack()} style={{ marginBottom: space.lg }}>
         <Text style={styles.back}>← All papers</Text>
@@ -237,7 +240,7 @@ export default function VaultDetailScreen() {
           {activeIsImage ? (
             <Image source={{ uri: activePreview.url }} style={styles.previewImg} resizeMode="contain" />
           ) : (
-            <Pressable style={styles.previewOpenBtn} onPress={() => Linking.openURL(activePreview.url)}>
+            <Pressable style={styles.previewOpenBtn} onPress={() => setPdfViewer(activePreview)}>
               <Text style={styles.previewOpenBtnText}>Open {activePreview.fileName} →</Text>
             </Pressable>
           )}
@@ -317,11 +320,45 @@ export default function VaultDetailScreen() {
         </Pressable>
       </View>
     </ScrollView>
+
+    <Modal visible={pdfViewer !== null} animationType="slide" onRequestClose={() => setPdfViewer(null)}>
+      <View style={{ flex: 1, backgroundColor: "#000" }}>
+        <View style={styles.pdfViewerBar}>
+          <Text style={styles.pdfViewerTitle} numberOfLines={1}>{pdfViewer?.fileName}</Text>
+          <Pressable onPress={() => setPdfViewer(null)} hitSlop={10}>
+            <Text style={styles.pdfViewerClose}>Close</Text>
+          </Pressable>
+        </View>
+        {pdfViewer && (
+          <WebView
+            source={{
+              uri: Platform.OS === "android"
+                ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(pdfViewer.url)}`
+                : pdfViewer.url,
+            }}
+            style={{ flex: 1 }}
+            startInLoadingState
+            renderLoading={() => (
+              <View style={styles.pdfViewerLoading}><ActivityIndicator color={color.sky} size="large" /></View>
+            )}
+          />
+        )}
+      </View>
+    </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   back: { fontFamily: font.bodySemibold, fontSize: 14, color: color.royal },
+
+  pdfViewerBar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.md,
+    paddingTop: 56, paddingHorizontal: space.lg, paddingBottom: space.md, backgroundColor: "#111",
+  },
+  pdfViewerTitle: { flex: 1, fontFamily: font.bodySemibold, fontSize: 14, color: "#fff" },
+  pdfViewerClose: { fontFamily: font.bodySemibold, fontSize: 14, color: color.sky },
+  pdfViewerLoading: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", backgroundColor: "#000" },
 
   ticketWrap: { marginBottom: space.lg },
   ticketMain: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.xl, paddingBottom: space.lg },
