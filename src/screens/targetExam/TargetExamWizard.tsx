@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation } from "@react-navigation/native";
 import { color, font, radius, space, shadow } from "../../theme";
 import SegmentDonut, { shadeForConsole } from "../../components/SegmentDonut";
 import DatePickerModal from "../../components/DatePickerModal";
@@ -74,6 +75,7 @@ function fmtDate(iso: string): string {
 const STEP_LABELS = ["Exam", "Target", "Starting point", "Your plan"];
 
 export default function TargetExamWizard({ onAccepted }: Props) {
+  const navigation = useNavigation();
   const [bankSections, setBankSections] = useState<BankSectionSummary[] | null>(null);
 
   const [step, setStep] = useState(1);
@@ -233,6 +235,10 @@ export default function TargetExamWizard({ onAccepted }: Props) {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <Pressable style={styles.exitRow} onPress={() => navigation.goBack()} hitSlop={10}>
+        <Text style={styles.exitRowText}>← Home</Text>
+      </Pressable>
+
       <View style={styles.stepRow}>
         {[1, 2, 3, 4].map((n) => {
           const displayStep = step >= 4 ? 4 : step;
@@ -684,6 +690,9 @@ export default function TargetExamWizard({ onAccepted }: Props) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.canvas },
   content: { padding: space.lg, paddingBottom: space.xxl * 2 },
+
+  exitRow: { alignSelf: "flex-start", marginBottom: space.md },
+  exitRowText: { fontFamily: font.bodySemibold, fontSize: 14, color: color.royal },
 
   stepRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: space.xl, flexWrap: "wrap" },
   stepItem: { flexDirection: "row", alignItems: "center" },

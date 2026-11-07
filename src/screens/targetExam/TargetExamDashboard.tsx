@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
+import { useNavigation } from "@react-navigation/native";
 import { color, font, radius, space, shadow } from "../../theme";
 import type { TargetExamState } from "../../../shared/types";
 
@@ -29,6 +30,7 @@ function calColor(level: string): string {
 }
 
 export default function TargetExamDashboard({ state, onStartTopic, onRefresh }: Props) {
+  const navigation = useNavigation();
   const [tasksDoneLocal, setTasksDoneLocal] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -54,6 +56,10 @@ export default function TargetExamDashboard({ state, onStartTopic, onRefresh }: 
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <Pressable style={styles.exitRow} onPress={() => navigation.goBack()} hitSlop={10}>
+        <Text style={styles.exitRowText}>← Home</Text>
+      </Pressable>
+
       {showWarning && (
         <View style={styles.warnBanner}>
           <Text style={styles.warnIcon}>⚠️</Text>
@@ -251,6 +257,9 @@ export default function TargetExamDashboard({ state, onStartTopic, onRefresh }: 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.canvas },
   content: { padding: space.lg, paddingBottom: space.xxl * 2 },
+
+  exitRow: { alignSelf: "flex-start", marginBottom: space.md },
+  exitRowText: { fontFamily: font.bodySemibold, fontSize: 14, color: color.royal },
 
   warnBanner: { flexDirection: "row", alignItems: "center", gap: space.md, backgroundColor: "#a62d27", borderRadius: radius.md, padding: space.md, marginBottom: space.lg },
   warnIcon: { fontSize: 20 },
