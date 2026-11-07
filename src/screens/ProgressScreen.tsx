@@ -306,7 +306,10 @@ export default function ProgressScreen() {
     when: number;
     kind: "mistake" | "session";
     head: string;
-    detail: string;
+    subtitle: string;
+    yourAnswer?: string;
+    correctAnswer?: string;
+    timeSpent?: string;
     attempt?: AttemptRecord;
   }
   const feedEvents = useMemo<FeedEvent[]>(() => {
@@ -316,7 +319,10 @@ export default function ProgressScreen() {
         when: m.when,
         kind: "mistake",
         head: `Missed ${m.topic}`,
-        detail: `Answered "${m.yourAnswer}" — correct was "${m.correct}" · ${m.title} · ${secs(m.timeMs)}`,
+        subtitle: m.title,
+        yourAnswer: m.yourAnswer,
+        correctAnswer: m.correct,
+        timeSpent: secs(m.timeMs),
       });
     }
     for (const h of history ?? []) {
@@ -324,12 +330,13 @@ export default function ProgressScreen() {
         when: h.when,
         kind: "session",
         head: `Finished ${h.title}`,
-        detail: `${accOf(h)}% accuracy · net ${h.net.toFixed(2)} / ${h.total}`,
+        subtitle: `${accOf(h)}% accuracy · net ${h.net.toFixed(2)} / ${h.total}`,
         attempt: h,
       });
     }
     return events.sort((a, b) => b.when - a.when).slice(0, 30);
   }, [mistakes, history]);
+  const [expandedFeed, setExpandedFeed] = useState<Set<number>>(new Set());
 
   // ---- session log: filterable (by exam) + paginated ----
   const examKinds = useMemo(() => {
@@ -632,19 +639,48 @@ export default function ProgressScreen() {
                 const acc = f.attempt ? accOf(f.attempt) : 0;
                 return acc >= 75 ? { cls: "good" as const, g: "✓" } : acc >= 50 ? { cls: "info" as const, g: "●" } : { cls: "bad" as const, g: "✕" };
               })();
-              const clickable = f.kind === "session" && !!f.attempt;
+              const isMistake = f.kind === "mistake";
+              const expanded = expandedFeed.has(i);
+              const clickable = isMistake || (f.kind === "session" && !!f.attempt);
               const d = new Date(f.when);
               const stamp = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
               const glyphColor = glyph.cls === "bad" ? color.statusBad : glyph.cls === "good" ? color.statusGood : color.sky;
+              function onPress() {
+                if (isMistake) {
+                  setExpandedFeed((prev) => {
+                    const next = new Set(prev);
+                    next.has(i) ? next.delete(i) : next.add(i);
+                    return next;
+                  });
+                } else if (f.attempt) {
+                  selectAttempt(f.attempt);
+                }
+              }
               return (
-                <Pressable key={i} style={styles.feedRow} onPress={clickable ? () => selectAttempt(f.attempt!) : undefined} disabled={!clickable}>
-                  <View style={[styles.feedGlyph, { borderColor: glyphColor }]}><Text style={[styles.feedGlyphText, { color: glyphColor }]}>{glyph.g}</Text></View>
+                <Pressable key={i} style={styles.feedRow} onPress={clickable ? onPress : undefined} disabled={!clickable}>
+                  <View style={[styles.feedGlyph, { backgroundColor: glyphColor + "26", borderColor: glyphColor }]}>
+                    <Text style={[styles.feedGlyphText, { color: glyphColor }]}>{glyph.g}</Text>
+                  </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={styles.feedTopLine}>
-                      <Text style={styles.feedHead} numberOfLines={1}>{f.head}</Text>
+                      <Text style={styles.feedHead} numberOfLines={2}>{f.head}</Text>
                       <Text style={styles.feedTime}>{stamp}</Text>
                     </View>
-                    <Text style={styles.feedDetail} numberOfLines={2}>{f.detail}</Text>
+                    <Text style={styles.feedSubtitle} numberOfLines={1}>{f.subtitle}</Text>
+                    {isMistake && expanded && (
+                      <View style={styles.feedAnswerBox}>
+                        <View style={styles.feedAnswerRow}>
+                          <Text style={styles.feedAnswerLbl}>Your answer</Text>
+                          <Text style={[styles.feedAnswerVal, { color: color.statusBad, textDecorationLine: "line-through" }]}>{f.yourAnswer || "—"}</Text>
+                        </View>
+                        <View style={styles.feedAnswerRow}>
+                          <Text style={styles.feedAnswerLbl}>Correct</Text>
+                          <Text style={[styles.feedAnswerVal, { color: color.statusGood }]}>{f.correctAnswer}</Text>
+                        </View>
+                        {f.timeSpent && <Text style={styles.feedAnswerTime}>took {f.timeSpent}</Text>}
+                      </View>
+                    )}
+                    {isMistake && !expanded && <Text style={styles.feedExpandHint}>Tap to see the answer</Text>}
                   </View>
                 </Pressable>
               );
@@ -687,11 +723,11 @@ export default function ProgressScreen() {
                     <Pressable style={styles.logRow} onPress={() => selectAttempt(h)}>
                       <View style={[styles.logAccent, { backgroundColor: col.fg }]} />
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <View style={styles.logTopLine}>
-                          <Text style={styles.logName} numberOfLines={1}>{h.title}</Text>
+                        <Text style={styles.logName} numberOfLines={2}>{h.title}</Text>
+                        <View style={styles.logMetaRow}>
                           {h.exam && h.exam !== "General" && <View style={styles.examBadge}><Text style={styles.examBadgeText}>{h.exam}</Text></View>}
+                          <Text style={styles.logMetaLine}>{fmtStamp(h.when)}</Text>
                         </View>
-                        <Text style={styles.logMetaLine}>{fmtStamp(h.when)}</Text>
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
                         <View style={[styles.accPill, { backgroundColor: col.bg }]}><Text style={[styles.accPillText, { color: col.fg }]}>{acc}%</Text></View>
@@ -886,33 +922,39 @@ const styles = StyleSheet.create({
   legendDot: { width: 7, height: 7, borderRadius: 3.5 },
   legendText: { fontFamily: font.body, fontSize: 10, color: color.consoleText2 },
 
-  feedRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: color.consoleLine },
-  feedGlyph: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-  feedGlyphText: { fontSize: 11, fontFamily: font.bodySemibold },
-  feedTopLine: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  feedHead: { fontFamily: font.bodySemibold, fontSize: 12.5, color: "#fff", flex: 1 },
-  feedTime: { fontFamily: font.mono, fontSize: 10, color: color.consoleText2 },
-  feedDetail: { fontFamily: font.body, fontSize: 11, color: color.consoleText, marginTop: 2, lineHeight: 15 },
+  feedRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: color.consoleLine },
+  feedGlyph: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  feedGlyphText: { fontSize: 12, fontFamily: font.bodySemibold },
+  feedTopLine: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 2 },
+  feedHead: { fontFamily: font.bodySemibold, fontSize: 13.5, color: "#fff", flex: 1, lineHeight: 18 },
+  feedTime: { fontFamily: font.mono, fontSize: 10, color: color.consoleText2, marginTop: 2 },
+  feedSubtitle: { fontFamily: font.body, fontSize: 11.5, color: color.consoleText2 },
+  feedExpandHint: { fontFamily: font.body, fontSize: 10, color: color.sky, marginTop: 3 },
+  feedAnswerBox: { marginTop: 8, padding: 10, borderRadius: radius.md, backgroundColor: color.consolePanel2, gap: 5 },
+  feedAnswerRow: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
+  feedAnswerLbl: { fontFamily: font.body, fontSize: 10.5, color: color.consoleText2, textTransform: "uppercase", letterSpacing: 0.3 },
+  feedAnswerVal: { fontFamily: font.bodySemibold, fontSize: 12, flexShrink: 1, textAlign: "right" },
+  feedAnswerTime: { fontFamily: font.mono, fontSize: 10, color: color.consoleText2, marginTop: 2 },
 
   logCard: { backgroundColor: color.surface, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg, ...shadow.soft },
   logFilterBtn: { backgroundColor: color.surfaceSunken, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
   logFilterBtnActive: { backgroundColor: color.royal },
   logFilterText: { fontFamily: font.bodyMedium, fontSize: 11, color: color.inkDim },
   logFilterTextActive: { color: "#fff" },
-  logGroupLabel: { fontFamily: font.bodySemibold, fontSize: 10.5, color: color.inkFaint, letterSpacing: 0.3, marginTop: space.sm, marginBottom: 4 },
-  logRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: color.surfaceSunken },
-  logAccent: { width: 3, height: 32, borderRadius: 2 },
-  logTopLine: { flexDirection: "row", alignItems: "center", gap: 6 },
-  logName: { fontFamily: font.bodySemibold, fontSize: 13.5, color: color.ink, flexShrink: 1 },
-  examBadge: { backgroundColor: color.surfaceSunken, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2 },
-  examBadgeText: { fontFamily: font.bodyMedium, fontSize: 9.5, color: color.inkDim },
-  logMetaLine: { fontFamily: font.body, fontSize: 11, color: color.inkDim, marginTop: 2 },
-  accPill: { borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
-  accPillText: { fontFamily: font.bodySemibold, fontSize: 11 },
-  logNetVal: { fontFamily: font.monoSemibold, fontSize: 11, color: color.inkDim, marginTop: 3 },
+  logGroupLabel: { fontFamily: font.bodySemibold, fontSize: 11, color: color.inkFaint, letterSpacing: 0.4, textTransform: "uppercase", marginTop: space.md, marginBottom: 6 },
+  logRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: color.surfaceSunken },
+  logAccent: { width: 3, borderRadius: 2, alignSelf: "stretch", minHeight: 36 },
+  logName: { fontFamily: font.bodySemibold, fontSize: 14, color: color.ink, lineHeight: 19, marginBottom: 5 },
+  logMetaRow: { flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" },
+  examBadge: { backgroundColor: color.surfaceSunken, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
+  examBadgeText: { fontFamily: font.bodyMedium, fontSize: 10, color: color.inkDim },
+  logMetaLine: { fontFamily: font.body, fontSize: 11, color: color.inkFaint },
+  accPill: { borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3 },
+  accPillText: { fontFamily: font.bodySemibold, fontSize: 11.5 },
+  logNetVal: { fontFamily: font.monoSemibold, fontSize: 11, color: color.inkDim, marginTop: 4 },
   pagerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: color.surfaceSunken },
-  pagerBtn: { paddingVertical: 6, paddingHorizontal: 10 },
-  pagerBtnText: { fontFamily: font.bodySemibold, fontSize: 13, color: color.royal },
+  pagerBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: color.surfaceSunken },
+  pagerBtnText: { fontFamily: font.bodySemibold, fontSize: 12.5, color: color.royal },
   pagerBtnTextDisabled: { color: color.inkFaint },
   pagerLabel: { fontFamily: font.mono, fontSize: 12, color: color.inkDim },
 
