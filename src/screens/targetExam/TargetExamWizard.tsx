@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
   subtext: { fontFamily: font.body, fontSize: 13, color: color.inkDim, marginBottom: space.lg, lineHeight: 19 },
 
   examGrid: { flexDirection: "row", flexWrap: "wrap", gap: "4%", rowGap: space.md },
-  examCard: { borderRadius: radius.lg, padding: space.md, aspectRatio: 1.35, justifyContent: "space-between", ...shadow.card },
+  examCard: { borderRadius: radius.lg, padding: space.md, minHeight: 168, justifyContent: "space-between", ...shadow.card },
   pyqBadge: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(255,255,255,0.22)", borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 3 },
   pyqBadgeText: { color: color.white, fontFamily: font.bodyBold, fontSize: 8 },
   examChip: { width: 26, height: 20, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.4)" },
