@@ -9,6 +9,7 @@ import SystemCheckScreen from "../screens/SystemCheckScreen";
 import InstructionsScreen from "../screens/InstructionsScreen";
 import ExamScreen from "../screens/ExamScreen";
 import ReportScreen from "../screens/ReportScreen";
+import SpeedMathsScreen from "../screens/SpeedMathsScreen";
 import { color } from "../theme";
 import type { RootStackParamList } from "./types";
 import { loadInProgress } from "../../shared/examPersist";
@@ -53,6 +54,7 @@ export default function RootNavigator() {
           initialParams={resumed ? { paper: resumed.paper, settings: resumed.settings, initialProgress: resumed.progress } : undefined}
         />
         <Stack.Screen name="Report" component={ReportScreen} />
+        <Stack.Screen name="SpeedMaths" component={SpeedMathsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

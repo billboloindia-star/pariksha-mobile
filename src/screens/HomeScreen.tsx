@@ -14,7 +14,7 @@ import type { AttemptRecord, LibraryItem } from "../../shared/types";
 import { useSession } from "../session/SessionContext";
 import { color, font, radius, space, shadow } from "../theme";
 import HaloRing from "../components/HaloRing";
-import { BellIcon, UploadIcon } from "../components/icons";
+import { BellIcon, UploadIcon, BoltIcon } from "../components/icons";
 import type { MainTabParamList } from "../navigation/MainTabs";
 import type { RootStackParamList } from "../navigation/types";
 
@@ -123,6 +123,24 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {api.canUseBankFeature(session) && (
+        <LinearGradient
+          colors={["#1a0a12", "#7a1538", "#e8305a"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.speedCard}
+        >
+          <Pressable style={styles.speedCardInner} onPress={() => rootNavigation.navigate("SpeedMaths")}>
+            <View style={styles.speedIconWrap}><BoltIcon size={20} color={color.white} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.speedTitle}>Speed Maths</Text>
+              <Text style={styles.speedSub}>Mental math drills — tables, fractions, simplification</Text>
+            </View>
+            <Text style={styles.speedGo}>Go →</Text>
+          </Pressable>
+        </LinearGradient>
+      )}
+
       {history && history.length > 0 ? (
         <LinearGradient
           colors={["#0a1b36", "#1d4ed8", "#38bdf8"]}
@@ -222,6 +240,15 @@ const styles = StyleSheet.create({
   streakText: { fontFamily: font.bodySemibold, fontSize: 15, color: color.amberDeep },
   streakSub: { fontFamily: font.body, fontSize: 12, color: color.inkDim },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.amber },
+
+  speedCard: {
+    marginHorizontal: space.xl, borderRadius: radius.lg, marginBottom: space.lg, overflow: "hidden", ...shadow.card,
+  },
+  speedCardInner: { flexDirection: "row", alignItems: "center", gap: space.md, padding: space.lg },
+  speedIconWrap: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" },
+  speedTitle: { fontFamily: font.bodySemibold, fontSize: 15, color: color.white },
+  speedSub: { fontFamily: font.body, fontSize: 11.5, color: "rgba(255,255,255,0.8)", marginTop: 2 },
+  speedGo: { fontFamily: font.bodySemibold, fontSize: 13, color: color.white },
 
   continueCard: {
     flexDirection: "row", alignItems: "center", gap: space.lg,

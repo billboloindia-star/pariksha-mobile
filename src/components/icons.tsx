@@ -86,3 +86,11 @@ export function ChevronRightIcon({ size = 18, color = "currentColor" }: IconProp
     </Svg>
   );
 }
+
+export function BoltIcon({ size = 22, color = "currentColor" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" fill="none" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+    </Svg>
+  );
+}

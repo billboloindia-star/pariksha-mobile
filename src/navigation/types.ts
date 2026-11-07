@@ -12,4 +12,5 @@ export type RootStackParamList = {
   Instructions: { paper: Paper; settings: ExamSettings };
   Exam: { paper: Paper; settings: ExamSettings; initialProgress?: ExamProgress };
   Report: { result: ExamResult };
+  SpeedMaths: undefined;
 };
