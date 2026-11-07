@@ -7,7 +7,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import * as api from "../../shared/api";
 import { loadHistory, computeStreak } from "../../shared/history";
-import type { AiReview as AiReviewData, AttemptRecord, PerformanceInput } from "../../shared/types";
+import type { AiReview as AiReviewData, AttemptRecord, BankSectionSummary, PerformanceInput } from "../../shared/types";
 import { color, font, radius, space, shadow } from "../theme";
 import HaloRing from "../components/HaloRing";
 import type { MainTabParamList } from "../navigation/MainTabs";
@@ -28,6 +28,10 @@ function secs(ms: number) {
   return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`;
 }
 
+function normalizeTopic(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/s\b/g, "");
+}
+
 function accOf(a: AttemptRecord): number {
   const attempted = a.total - a.skipped;
   return a.accuracy ?? (attempted ? Math.round((a.correct / attempted) * 100) : 0);
@@ -43,23 +47,48 @@ export default function ProgressScreen() {
   const [selected, setSelected] = useState<AttemptRecord | null>(null);
   const [aiState, setAiState] = useState<"idle" | "loading" | "error" | "done">("idle");
   const [aiReview, setAiReview] = useState<AiReviewData | null>(null);
-  const [chapterToSection, setChapterToSection] = useState<Record<string, string>>({});
+  const [bankSections, setBankSections] = useState<BankSectionSummary[] | null>(null);
   const [mistakesExpanded, setMistakesExpanded] = useState(false);
   const [logExpanded, setLogExpanded] = useState(false);
+
+  const canPractice = api.backendEnabled() && api.canUseBankFeature(api.getSession());
 
   useEffect(() => {
     loadHistory().then(setHistory);
   }, []);
 
   useEffect(() => {
-    const session = api.getSession();
-    if (!api.backendEnabled() || !api.canUseBankFeature(session)) return;
-    api.fetchBankSections().then((rows) => {
-      const map: Record<string, string> = {};
-      for (const r of rows) map[r.chapter] = r.section;
-      setChapterToSection(map);
-    }).catch(() => {});
+    if (!canPractice) return;
+    api.fetchBankSections().then(setBankSections).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const chapterToSection = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const s of bankSections ?? []) m[s.chapter] = s.section;
+    return m;
+  }, [bankSections]);
+
+  // Attempt topics rarely spell a chapter exactly how the bank does (an
+  // AI-converted Paper Vault paper names its own topics freely) - so beyond
+  // the exact lookup above, try a normalized/substring match before giving
+  // up on finding a matching chapter entirely.
+  const normalizedChapters = useMemo(
+    () => (bankSections ?? []).map((s) => ({ section: s.section, chapter: s.chapter, norm: normalizeTopic(s.chapter) })),
+    [bankSections]
+  );
+
+  function findMatch(topic: string): { section: string; chapter: string } | null {
+    const exactSection = chapterToSection[topic];
+    if (exactSection) return { section: exactSection, chapter: topic };
+    const norm = normalizeTopic(topic);
+    if (!norm) return null;
+    const exact = normalizedChapters.find((c) => c.norm === norm);
+    if (exact) return { section: exact.section, chapter: exact.chapter };
+    const partial = normalizedChapters.find((c) => c.norm.includes(norm) || norm.includes(c.norm));
+    if (partial) return { section: partial.section, chapter: partial.chapter };
+    return null;
+  }
 
   const chronological = useMemo(() => (history ?? []).slice().sort((a, b) => a.when - b.when), [history]);
   const recentFirst = useMemo(() => (history ?? []).slice().sort((a, b) => b.when - a.when), [history]);
@@ -118,9 +147,13 @@ export default function ProgressScreen() {
   }, [history]);
 
   function practiceNow(topic: string) {
-    const section = chapterToSection[topic];
-    if (!section) return;
-    navigation.navigate("Vault", { screen: "MasterVault", params: { seedSection: section, seedChapters: [topic] } } as never);
+    const match = findMatch(topic);
+    if (!match) return;
+    navigation.navigate("Vault", { screen: "MasterVault", params: { seedSection: match.section, seedChapters: [match.chapter] } } as never);
+  }
+
+  function browseBank() {
+    navigation.navigate("Vault", { screen: "MasterVault", params: undefined } as never);
   }
 
   async function requestAiReview(record: AttemptRecord) {
@@ -302,7 +335,7 @@ export default function ProgressScreen() {
           <>
             <Text style={styles.sectionHead}>Focus next</Text>
             {focusTopics.map((t, i) => {
-              const section = chapterToSection[t.topic];
+              const match = findMatch(t.topic);
               return (
                 <View key={t.topic} style={styles.focusCard}>
                   <View style={styles.focusRank}><Text style={styles.focusRankText}>{i + 1}</Text></View>
@@ -310,11 +343,15 @@ export default function ProgressScreen() {
                     <Text style={styles.focusTopic} numberOfLines={1}>{t.topic}</Text>
                     <Text style={styles.focusMeta}>{t.acc}% accuracy · {t.att} attempt{t.att === 1 ? "" : "s"}</Text>
                   </View>
-                  {section && (
+                  {match ? (
                     <Pressable style={styles.focusBtn} onPress={() => practiceNow(t.topic)}>
                       <Text style={styles.focusBtnText}>Practice now →</Text>
                     </Pressable>
-                  )}
+                  ) : canPractice && bankSections && bankSections.length > 0 ? (
+                    <Pressable style={styles.focusBtnGhost} onPress={browseBank}>
+                      <Text style={styles.focusBtnGhostText}>Browse bank →</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               );
             })}
@@ -443,6 +480,8 @@ const styles = StyleSheet.create({
   focusMeta: { fontFamily: font.body, fontSize: 12, color: color.inkDim, marginTop: 2 },
   focusBtn: { backgroundColor: color.greenBg, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6 },
   focusBtnText: { fontFamily: font.bodySemibold, fontSize: 11, color: color.green },
+  focusBtnGhost: { backgroundColor: color.surfaceSunken, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6 },
+  focusBtnGhostText: { fontFamily: font.bodySemibold, fontSize: 11, color: color.inkDim },
 
   sdot: { width: 7, height: 7, borderRadius: 3.5 },
   topicRow: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: color.surfaceSunken },
