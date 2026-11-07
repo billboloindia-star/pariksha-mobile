@@ -27,7 +27,14 @@
     "plugins": [
       "expo-secure-store",
       "expo-font",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pariksha needs access to your photos to set a profile picture.",
+          "cameraPermission": "Pariksha needs access to your camera to take a profile picture."
+        }
+      ]
     ],
     "extra": {
       "eas": {

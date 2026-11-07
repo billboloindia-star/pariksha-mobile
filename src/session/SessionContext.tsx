@@ -6,6 +6,7 @@ interface SessionContextValue {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateSession: (patch: Partial<api.Session>) => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -44,6 +45,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     logout() {
       api.setSession(null);
       setSessionState(null);
+    },
+    updateSession(patch) {
+      setSessionState((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev, ...patch };
+        api.setSession(updated);
+        return updated;
+      });
     },
   }), [session]);
 

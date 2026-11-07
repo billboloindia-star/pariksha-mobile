@@ -33,7 +33,9 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     const [h, l] = await Promise.all([
       loadHistory().catch(() => [] as AttemptRecord[]),
-      api.backendEnabled() ? api.fetchLibrary().catch(() => [] as LibraryItem[]) : Promise.resolve([] as LibraryItem[]),
+      api.backendEnabled()
+        ? api.fetchLibrary().then((r) => r.items).catch(() => [] as LibraryItem[])
+        : Promise.resolve([] as LibraryItem[]),
     ]);
     setHistory(h);
     setLibrary(l);
@@ -181,7 +183,7 @@ export default function HomeScreen() {
 
       <View style={styles.statsRow}>
         <StatCard label="Attempts" value={String((history ?? []).length)} />
-        <StatCard label="Papers in vault" value={String((library ?? []).length)} />
+        <StatCard label="Recent papers" value={String((library ?? []).length)} />
       </View>
 
       <View style={{ height: space.xxl }} />

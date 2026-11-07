@@ -39,6 +39,14 @@ export default function VaultDetailScreen() {
     api.getLibraryFileLinks(item.itemId).then(setFileLinks).catch((e) => setLinksError(e.message));
   }, [item.itemId]);
 
+  // The list screen hands over an item without its (potentially large) paper
+  // field - fetch the full item once so "Ready"/"Start test" reflect reality.
+  useEffect(() => {
+    if (initialItem.paper) return;
+    api.fetchLibraryItem(initialItem.itemId).then(setItem).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function copyPrompt() {
     const text = fileLinks ? aiConversionPromptWithLinks(fileLinks) : aiConversionPrompt;
     await Clipboard.setStringAsync(text);

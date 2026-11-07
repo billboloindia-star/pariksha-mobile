@@ -23,12 +23,30 @@ export default function VaultListScreen() {
   const navigation = useNavigation<Nav>();
   const { session } = useSession();
   const [items, setItems] = useState<LibraryItem[] | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
-    return api.fetchLibrary().then(setItems).catch(() => setItems([]));
+    return api.fetchLibrary()
+      .then((r) => { setItems(r.items); setNextCursor(r.nextCursor ?? null); })
+      .catch(() => setItems([]));
   }, []);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const r = await api.fetchLibrary(nextCursor);
+      setItems((prev) => [...(prev ?? []), ...r.items]);
+      setNextCursor(r.nextCursor ?? null);
+    } catch {
+      // leave nextCursor as-is - the user can retry by scrolling again
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     const unsub = navigation.addListener("focus", load);
@@ -67,7 +85,7 @@ export default function VaultListScreen() {
     }
   }
 
-  const readyCount = (items ?? []).filter((it) => it.paper).length;
+  const readyCount = (items ?? []).filter((it) => it.hasPaper).length;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.canvas }}>
@@ -94,7 +112,7 @@ export default function VaultListScreen() {
             {items !== null && items.length > 0 && (
               <View style={styles.statsRow}>
                 <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{items.length}</Text>
+                  <Text style={styles.statValue}>{items.length}{nextCursor ? "+" : ""}</Text>
                   <Text style={styles.statLabel}>Papers</Text>
                 </View>
                 <View style={styles.statCard}>
@@ -122,15 +140,18 @@ export default function VaultListScreen() {
               <Text style={styles.cardMeta}>
                 {item.files.length} file{item.files.length === 1 ? "" : "s"} · {fmtSize(item.files.reduce((s, f) => s + f.fileSize, 0))}
               </Text>
-              <View style={[styles.pill, item.paper ? styles.pillReady : styles.pillPending]}>
-                <Text style={[styles.pillText, item.paper ? styles.pillTextReady : styles.pillTextPending]}>
-                  {item.paper ? "Ready to test" : "Needs conversion"}
+              <View style={[styles.pill, item.hasPaper ? styles.pillReady : styles.pillPending]}>
+                <Text style={[styles.pillText, item.hasPaper ? styles.pillTextReady : styles.pillTextPending]}>
+                  {item.hasPaper ? "Ready to test" : "Needs conversion"}
                 </Text>
               </View>
             </View>
             <ChevronRightIcon color={color.inkFaint} />
           </Pressable>
         )}
+        onEndReachedThreshold={0.4}
+        onEndReached={loadMore}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color={color.royal} style={{ marginTop: space.md }} /> : undefined}
       />
     </View>
   );
