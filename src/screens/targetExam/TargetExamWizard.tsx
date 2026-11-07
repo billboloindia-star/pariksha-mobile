@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { color, font, radius, space, shadow } from "../../theme";
 import SegmentDonut, { shadeForConsole } from "../../components/SegmentDonut";
 import DatePickerModal from "../../components/DatePickerModal";
@@ -76,6 +77,7 @@ const STEP_LABELS = ["Exam", "Target", "Starting point", "Your plan"];
 
 export default function TargetExamWizard({ onAccepted }: Props) {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [bankSections, setBankSections] = useState<BankSectionSummary[] | null>(null);
 
   const [step, setStep] = useState(1);
@@ -235,7 +237,7 @@ export default function TargetExamWizard({ onAccepted }: Props) {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Pressable style={styles.exitRow} onPress={() => navigation.goBack()} hitSlop={10}>
+      <Pressable style={[styles.exitRow, { marginTop: insets.top }]} onPress={() => navigation.goBack()} hitSlop={10}>
         <Text style={styles.exitRowText}>← Home</Text>
       </Pressable>
 

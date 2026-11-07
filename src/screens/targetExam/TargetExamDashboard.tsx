@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
 import { useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { color, font, radius, space, shadow } from "../../theme";
 import type { TargetExamState } from "../../../shared/types";
 
@@ -31,6 +32,7 @@ function calColor(level: string): string {
 
 export default function TargetExamDashboard({ state, onStartTopic, onRefresh }: Props) {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [tasksDoneLocal, setTasksDoneLocal] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -56,7 +58,7 @@ export default function TargetExamDashboard({ state, onStartTopic, onRefresh }: 
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Pressable style={styles.exitRow} onPress={() => navigation.goBack()} hitSlop={10}>
+      <Pressable style={[styles.exitRow, { marginTop: insets.top }]} onPress={() => navigation.goBack()} hitSlop={10}>
         <Text style={styles.exitRowText}>← Home</Text>
       </Pressable>
 
