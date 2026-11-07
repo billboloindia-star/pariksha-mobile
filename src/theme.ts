@@ -33,6 +33,22 @@ export const color = {
   redBg: "#fdecee",
 
   white: "#ffffff",
+
+  // ---- dark "mission control" console tokens (Target Exam feature) ----
+  consolePanel: "#0b1626",
+  consolePanel2: "#0e1c30",
+  consolePanel3: "#0d1a2c",
+  consoleLine: "#1c2d45",
+  consoleLine2: "#263a55",
+  consoleText: "#8296b3",
+  consoleText2: "#5c7191",
+
+  statusLow: "#c0392b",
+  statusAvg: "#b4740e",
+  statusHigh: "#2f8f4e",
+  statusGood: "#4fd18b",
+  statusWarn: "#ffb347",
+  statusBad: "#ff7a7a",
 } as const;
 
 /** react-native-linear-gradient-style stop arrays — use with expo-linear-gradient. */

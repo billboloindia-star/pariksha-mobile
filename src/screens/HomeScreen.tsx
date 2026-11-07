@@ -141,6 +141,24 @@ export default function HomeScreen() {
         </LinearGradient>
       )}
 
+      {api.canUseBankFeature(session) && (
+        <LinearGradient
+          colors={["#0a1b36", "#132a52", "#1d4ed8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.speedCard}
+        >
+          <Pressable style={styles.speedCardInner} onPress={() => rootNavigation.navigate("TargetExam")}>
+            <View style={styles.speedIconWrap}><Text style={{ fontSize: 18 }}>🎯</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.speedTitle}>Target Exam</Text>
+              <Text style={styles.speedSub}>Set your exam date and get a personalized study plan</Text>
+            </View>
+            <Text style={styles.speedGo}>Go →</Text>
+          </Pressable>
+        </LinearGradient>
+      )}
+
       {history && history.length > 0 ? (
         <LinearGradient
           colors={["#0a1b36", "#1d4ed8", "#38bdf8"]}
