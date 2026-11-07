@@ -27,11 +27,19 @@ export default function VaultListScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(() => {
+    setLoadError("");
     return api.fetchLibrary()
       .then((r) => { setItems(r.items); setNextCursor(r.nextCursor ?? null); })
-      .catch(() => setItems([]));
+      .catch((err) => {
+        // Previously swallowed silently here, so a failed fetch (auth,
+        // network, anything) looked identical to "you have no papers" -
+        // surface it instead so it's actually diagnosable.
+        setItems([]);
+        setLoadError(err instanceof Error ? err.message : "Couldn't load your papers.");
+      });
   }, []);
 
   async function loadMore() {
@@ -99,6 +107,13 @@ export default function VaultListScreen() {
             <Text style={styles.title}>Paper Vault</Text>
             <Text style={styles.sub}>Upload a paper once, convert it with AI, come back to it anytime.</Text>
 
+            {loadError !== "" && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>Couldn't load your papers — {loadError}</Text>
+                <Pressable onPress={load}><Text style={styles.errorBannerRetry}>Retry</Text></Pressable>
+              </View>
+            )}
+
             {api.canUseBankFeature(session) && (
               <Pressable style={styles.bankBtn} onPress={() => navigation.navigate("MasterVault")}>
                 <View style={{ flex: 1 }}>
@@ -160,6 +175,12 @@ export default function VaultListScreen() {
 const styles = StyleSheet.create({
   title: { fontFamily: font.displayBlack, fontSize: 26, color: color.ink, marginBottom: 4 },
   sub: { fontFamily: font.body, fontSize: 14, color: color.inkDim, marginBottom: space.lg },
+  errorBanner: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.sm,
+    backgroundColor: color.redBg, borderRadius: radius.lg, padding: space.md, marginBottom: space.lg,
+  },
+  errorBannerText: { flex: 1, fontFamily: font.body, fontSize: 12.5, color: color.red },
+  errorBannerRetry: { fontFamily: font.bodySemibold, fontSize: 12.5, color: color.red, textDecorationLine: "underline" },
   bankBtn: {
     flexDirection: "row", alignItems: "center", gap: space.sm,
     backgroundColor: color.royal, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg,
