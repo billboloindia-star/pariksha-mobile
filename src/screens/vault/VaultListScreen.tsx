@@ -9,6 +9,7 @@ import type { LibraryItem } from "../../../shared/types";
 import { color, font, radius, space, shadow } from "../../theme";
 import { UploadIcon, ChevronRightIcon } from "../../components/icons";
 import type { VaultStackParamList } from "../../navigation/VaultStack";
+import { useSession } from "../../session/SessionContext";
 
 type Nav = NativeStackNavigationProp<VaultStackParamList, "VaultList">;
 
@@ -20,6 +21,7 @@ function fmtSize(bytes: number): string {
 
 export default function VaultListScreen() {
   const navigation = useNavigation<Nav>();
+  const { session } = useSession();
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,6 +81,16 @@ export default function VaultListScreen() {
             <Text style={styles.title}>Paper Vault</Text>
             <Text style={styles.sub}>Upload a paper once, convert it with AI, come back to it anytime.</Text>
 
+            {api.canUseBankFeature(session) && (
+              <Pressable style={styles.bankBtn} onPress={() => navigation.navigate("MasterVault")}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bankBtnTitle}>Master Vault</Text>
+                  <Text style={styles.bankBtnSub}>Your tagged question bank — build a custom practice session</Text>
+                </View>
+                <ChevronRightIcon color={color.white} />
+              </Pressable>
+            )}
+
             {items !== null && items.length > 0 && (
               <View style={styles.statsRow}>
                 <View style={styles.statCard}>
@@ -127,6 +139,12 @@ export default function VaultListScreen() {
 const styles = StyleSheet.create({
   title: { fontFamily: font.displayBlack, fontSize: 26, color: color.ink, marginBottom: 4 },
   sub: { fontFamily: font.body, fontSize: 14, color: color.inkDim, marginBottom: space.lg },
+  bankBtn: {
+    flexDirection: "row", alignItems: "center", gap: space.sm,
+    backgroundColor: color.royal, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg,
+  },
+  bankBtnTitle: { fontFamily: font.bodySemibold, fontSize: 15, color: color.white },
+  bankBtnSub: { fontFamily: font.body, fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 },
   statsRow: { flexDirection: "row", gap: space.sm, marginBottom: space.lg },
   statCard: { flex: 1, backgroundColor: color.surface, borderRadius: radius.lg, padding: space.lg, alignItems: "center", ...shadow.soft },
   statValue: { fontFamily: font.monoBold, fontSize: 22, color: color.ink },
