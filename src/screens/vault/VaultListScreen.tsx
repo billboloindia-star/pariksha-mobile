@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, Alert, RefreshControl } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, Alert, RefreshControl, TextInput, Image } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { useNavigation } from "@react-navigation/native";
@@ -7,7 +8,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as api from "../../../shared/api";
 import type { LibraryItem } from "../../../shared/types";
 import { color, font, radius, space, shadow } from "../../theme";
-import { UploadIcon, ChevronRightIcon } from "../../components/icons";
+import { UploadIcon, ChevronRightIcon, SearchIcon } from "../../components/icons";
 import type { VaultStackParamList } from "../../navigation/VaultStack";
 import { useSession } from "../../session/SessionContext";
 
@@ -19,6 +20,10 @@ function fmtSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isImageType(fileType: string): boolean {
+  return fileType.startsWith("image/");
+}
+
 export default function VaultListScreen() {
   const navigation = useNavigation<Nav>();
   const { session } = useSession();
@@ -28,6 +33,7 @@ export default function VaultListScreen() {
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(() => {
     setLoadError("");
@@ -94,18 +100,37 @@ export default function VaultListScreen() {
   }
 
   const readyCount = (items ?? []).filter((it) => it.hasPaper).length;
+  const shown = useMemo(
+    () => (items ?? []).filter((it) => it.title.toLowerCase().includes(query.trim().toLowerCase())),
+    [items, query]
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: color.canvas }}>
       <FlatList
-        data={items ?? []}
+        data={shown}
         keyExtractor={(it) => it.itemId}
+        numColumns={2}
+        columnWrapperStyle={{ gap: space.md }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.royal} />}
-        contentContainerStyle={{ padding: space.xl, paddingTop: 64 }}
+        contentContainerStyle={{ padding: space.xl, paddingTop: 0 }}
         ListHeaderComponent={
           <>
-            <Text style={styles.title}>Paper Vault</Text>
-            <Text style={styles.sub}>Upload a paper once, convert it with AI, come back to it anytime.</Text>
+            <LinearGradient
+              colors={[color.inkNavy900, color.royal]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.hero}
+            >
+              <View style={styles.heroIconWrap}>
+                <Text style={styles.heroIcon}>📄</Text>
+              </View>
+              <Text style={styles.heroTitle}>Keep every paper you convert</Text>
+              <Text style={styles.heroSub}>
+                Upload the files once, run them through the AI-conversion prompt, paste back the result — it's
+                saved here for good.
+              </Text>
+            </LinearGradient>
 
             {loadError !== "" && (
               <View style={styles.errorBanner}>
@@ -146,24 +171,56 @@ export default function VaultListScreen() {
             {items !== null && items.length === 0 && (
               <Text style={styles.empty}>Nothing in your vault yet — upload a paper above.</Text>
             )}
+
+            {items !== null && items.length > 0 && (
+              <View style={styles.searchRow}>
+                <SearchIcon color={color.inkFaint} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search your papers…"
+                  placeholderTextColor={color.inkFaint}
+                  value={query}
+                  onChangeText={setQuery}
+                />
+              </View>
+            )}
+            {items !== null && items.length > 0 && shown.length === 0 && (
+              <Text style={styles.empty}>No papers match "{query}".</Text>
+            )}
           </>
         }
-        renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => navigation.navigate("VaultDetail", { item })}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-              <Text style={styles.cardMeta}>
-                {item.files.length} file{item.files.length === 1 ? "" : "s"} · {fmtSize(item.files.reduce((s, f) => s + f.fileSize, 0))}
-              </Text>
-              <View style={[styles.pill, item.hasPaper ? styles.pillReady : styles.pillPending]}>
-                <Text style={[styles.pillText, item.hasPaper ? styles.pillTextReady : styles.pillTextPending]}>
-                  {item.hasPaper ? "Ready to test" : "Needs conversion"}
-                </Text>
+        renderItem={({ item }) => {
+          const fileCount = item.files.length;
+          const isImage = isImageType(item.files[0]?.fileType ?? "");
+          return (
+            <Pressable style={styles.card} onPress={() => navigation.navigate("VaultDetail", { item })}>
+              <View style={styles.thumb}>
+                {item.thumbnailUrl ? (
+                  <Image source={{ uri: item.thumbnailUrl }} style={styles.thumbImg} resizeMode="cover" />
+                ) : (
+                  <View style={styles.thumbMock}>
+                    <View style={[styles.mockBar, { width: "70%", height: 8 }]} />
+                    <View style={[styles.mockBar, { width: "100%" }]} />
+                    <View style={[styles.mockBar, { width: "90%" }]} />
+                    <View style={[styles.mockBar, { width: "60%" }]} />
+                  </View>
+                )}
+                <View style={[styles.statusPill, item.hasPaper ? styles.pillReady : styles.pillPending]}>
+                  <Text style={[styles.statusPillText, item.hasPaper ? styles.pillTextReady : styles.pillTextPending]}>
+                    {item.hasPaper ? "✓ Ready" : "⏳ Converting"}
+                  </Text>
+                </View>
+                <View style={styles.fileBadge}>
+                  <Text style={styles.fileBadgeText}>{isImage ? "IMG" : "PDF"}{fileCount > 1 ? ` +${fileCount - 1}` : ""}</Text>
+                </View>
               </View>
-            </View>
-            <ChevronRightIcon color={color.inkFaint} />
-          </Pressable>
-        )}
+              <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+              <Text style={styles.cardMeta}>
+                {fmtSize(item.files.reduce((s, f) => s + f.fileSize, 0))} · {new Date(item.createdAt).toLocaleDateString()}
+              </Text>
+            </Pressable>
+          );
+        }}
         onEndReachedThreshold={0.4}
         onEndReached={loadMore}
         ListFooterComponent={loadingMore ? <ActivityIndicator color={color.royal} style={{ marginTop: space.md }} /> : undefined}
@@ -173,8 +230,16 @@ export default function VaultListScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontFamily: font.displayBlack, fontSize: 26, color: color.ink, marginBottom: 4 },
-  sub: { fontFamily: font.body, fontSize: 14, color: color.inkDim, marginBottom: space.lg },
+  hero: {
+    marginTop: 56, marginBottom: space.lg, borderRadius: radius.xl, padding: space.xl,
+  },
+  heroIconWrap: {
+    width: 44, height: 44, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center", justifyContent: "center", marginBottom: space.md,
+  },
+  heroIcon: { fontSize: 20 },
+  heroTitle: { fontFamily: font.displayBlack, fontSize: 21, color: color.white, marginBottom: 6, lineHeight: 26 },
+  heroSub: { fontFamily: font.body, fontSize: 13, color: "rgba(255,255,255,0.82)", lineHeight: 18 },
   errorBanner: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.sm,
     backgroundColor: color.redBg, borderRadius: radius.lg, padding: space.md, marginBottom: space.lg,
@@ -197,17 +262,27 @@ const styles = StyleSheet.create({
     borderStyle: "dashed", paddingVertical: space.lg, marginBottom: space.lg,
   },
   uploadBtnText: { fontFamily: font.bodySemibold, fontSize: 15, color: color.royal },
+  searchRow: {
+    flexDirection: "row", alignItems: "center", gap: space.sm, backgroundColor: color.surface,
+    borderRadius: radius.lg, paddingHorizontal: space.md, marginBottom: space.md, ...shadow.soft,
+  },
+  searchInput: { flex: 1, fontFamily: font.body, fontSize: 14, color: color.ink, paddingVertical: 12 },
   empty: { fontFamily: font.body, fontSize: 14, color: color.inkDim, textAlign: "center", marginTop: space.xl },
   card: {
-    flexDirection: "row", alignItems: "center", gap: space.sm,
-    backgroundColor: color.surface, borderRadius: radius.lg, padding: space.lg, marginBottom: space.sm, ...shadow.soft,
+    flex: 1, backgroundColor: color.surface, borderRadius: radius.lg, padding: space.sm, marginBottom: space.md, ...shadow.soft,
   },
-  cardTitle: { fontFamily: font.bodySemibold, fontSize: 15, color: color.ink, marginBottom: 4 },
-  cardMeta: { fontFamily: font.body, fontSize: 12, color: color.inkDim, marginBottom: 8 },
-  pill: { alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
-  pillReady: { backgroundColor: color.greenBg },
-  pillPending: { backgroundColor: color.surfaceSunken },
-  pillText: { fontFamily: font.bodyMedium, fontSize: 11 },
-  pillTextReady: { color: color.green },
-  pillTextPending: { color: color.inkDim },
+  thumb: { aspectRatio: 0.78, borderRadius: radius.md, overflow: "hidden", backgroundColor: color.surfaceSunken, marginBottom: space.sm },
+  thumbImg: { width: "100%", height: "100%" },
+  thumbMock: { flex: 1, padding: space.md, gap: 8, justifyContent: "center" },
+  mockBar: { height: 5, borderRadius: 3, backgroundColor: color.surfaceAlt },
+  statusPill: { position: "absolute", top: 8, left: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
+  pillReady: { backgroundColor: "rgba(21,152,61,0.92)" },
+  pillPending: { backgroundColor: "rgba(11,24,48,0.72)" },
+  statusPillText: { fontFamily: font.bodySemibold, fontSize: 9.5 },
+  pillTextReady: { color: color.white },
+  pillTextPending: { color: color.white },
+  fileBadge: { position: "absolute", bottom: 8, right: 8, backgroundColor: "rgba(11,24,48,0.72)", paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
+  fileBadgeText: { fontFamily: font.monoSemibold, fontSize: 9.5, color: color.white },
+  cardTitle: { fontFamily: font.bodySemibold, fontSize: 13, color: color.ink, marginBottom: 3, lineHeight: 17 },
+  cardMeta: { fontFamily: font.body, fontSize: 10.5, color: color.inkDim },
 });
