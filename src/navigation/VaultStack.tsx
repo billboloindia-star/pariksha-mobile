@@ -7,7 +7,7 @@ import type { LibraryItem } from "../../shared/types";
 export type VaultStackParamList = {
   VaultList: undefined;
   VaultDetail: { item: LibraryItem };
-  MasterVault: undefined;
+  MasterVault: { seedSection?: string; seedChapters?: string[] } | undefined;
 };
 
 const Stack = createNativeStackNavigator<VaultStackParamList>();

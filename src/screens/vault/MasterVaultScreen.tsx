@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Alert } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RouteProp } from "@react-navigation/native";
 import * as api from "../../../shared/api";
 import type { BankSectionSummary, Difficulty } from "../../../shared/types";
 import { color, font, radius, space, shadow } from "../../theme";
@@ -10,6 +11,7 @@ import type { RootStackParamList } from "../../navigation/types";
 
 type Nav = NativeStackNavigationProp<VaultStackParamList, "MasterVault">;
 type RootNav = NativeStackNavigationProp<RootStackParamList>;
+type Route = RouteProp<VaultStackParamList, "MasterVault">;
 
 const DIFFICULTIES: { value: Difficulty | ""; label: string }[] = [
   { value: "", label: "Any" },
@@ -21,6 +23,8 @@ const DIFFICULTIES: { value: Difficulty | ""; label: string }[] = [
 export default function MasterVaultScreen() {
   const navigation = useNavigation<Nav>();
   const rootNavigation = navigation.getParent<RootNav>() ?? (navigation as unknown as RootNav);
+  const route = useRoute<Route>();
+  const seedApplied = useRef(false);
 
   const [sections, setSections] = useState<BankSectionSummary[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -38,8 +42,15 @@ export default function MasterVaultScreen() {
   const sectionNames = useMemo(() => Array.from(new Set((sections ?? []).map((s) => s.section))), [sections]);
 
   useEffect(() => {
-    if (!activeSection && sectionNames.length) setActiveSection(sectionNames[0]);
-  }, [sectionNames, activeSection]);
+    if (!sectionNames.length) return;
+    if (!seedApplied.current && route.params?.seedSection && sectionNames.includes(route.params.seedSection)) {
+      seedApplied.current = true;
+      setActiveSection(route.params.seedSection);
+      setSelectedChapters(route.params.seedChapters ?? []);
+      return;
+    }
+    if (!activeSection) setActiveSection(sectionNames[0]);
+  }, [sectionNames, activeSection, route.params]);
 
   const chaptersForSection = useMemo(
     () => (sections ?? []).filter((s) => s.section === activeSection),
