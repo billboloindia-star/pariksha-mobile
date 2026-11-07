@@ -156,11 +156,9 @@ export default function TargetExamDashboard({ state, onStartTopic, onRefresh }: 
                   <Text style={[styles.taskName, done && styles.taskNameDone]}>{t.topic}</Text>
                   <Text style={styles.taskMeta}>{t.meta}</Text>
                 </View>
-                {!done && (
-                  <Pressable style={styles.taskGo} onPress={() => onStartTopic(t.topic)}>
-                    <Text style={styles.taskGoText}>Start →</Text>
-                  </Pressable>
-                )}
+                <Pressable style={styles.taskGo} onPress={() => onStartTopic(t.topic)}>
+                  <Text style={styles.taskGoText}>{done ? "Practice again →" : "Start →"}</Text>
+                </Pressable>
               </View>
             );
           })
