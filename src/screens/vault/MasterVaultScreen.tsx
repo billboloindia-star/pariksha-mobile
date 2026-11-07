@@ -27,6 +27,13 @@ export default function MasterVaultScreen() {
   const rootNavigation = navigation.getParent<RootNav>() ?? (navigation as unknown as RootNav);
   const route = useRoute<Route>();
   const seedApplied = useRef(false);
+  // `any` here: RN 0.88 / React 19's new host-component ref types don't
+  // expose getInnerViewNode/measureLayout/scrollTo in their TS defs even
+  // though they exist at runtime - this is the standard escape hatch for
+  // this exact scroll-to-measured-element pattern.
+  const scrollRef = useRef<any>(null);
+  const builderRef = useRef<any>(null);
+  const [pendingScrollToBuilder, setPendingScrollToBuilder] = useState(false);
 
   const [sections, setSections] = useState<BankSectionSummary[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -49,6 +56,7 @@ export default function MasterVaultScreen() {
       seedApplied.current = true;
       setActiveSection(route.params.seedSection);
       setSelectedChapters(route.params.seedChapters ?? []);
+      setPendingScrollToBuilder(true);
       return;
     }
     if (!activeSection) setActiveSection(sectionNames[0]);
@@ -58,6 +66,29 @@ export default function MasterVaultScreen() {
     () => (sections ?? []).filter((s) => s.section === activeSection),
     [sections, activeSection]
   );
+
+  // Deferred twice (state update -> re-render -> native layout) so the
+  // builder card has actually been laid out in its final position before we
+  // measure it - measuring on the same tick as the seed-apply above would
+  // read stale (pre-layout) coordinates and scroll to the wrong place.
+  useEffect(() => {
+    if (!pendingScrollToBuilder) return;
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        const scrollNode = scrollRef.current?.getInnerViewNode?.();
+        if (builderRef.current && scrollNode) {
+          builderRef.current.measureLayout(
+            scrollNode,
+            (_x: number, y: number) => scrollRef.current?.scrollTo({ y: Math.max(0, y - 16), animated: true }),
+            () => {}
+          );
+        }
+        setPendingScrollToBuilder(false);
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
+  }, [pendingScrollToBuilder, chaptersForSection]);
 
   const totalBankCount = useMemo(() => (sections ?? []).reduce((n, s) => n + s.count, 0), [sections]);
 
@@ -100,7 +131,7 @@ export default function MasterVaultScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: color.canvas }} contentContainerStyle={{ paddingBottom: space.xxl }}>
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: color.canvas }} contentContainerStyle={{ paddingBottom: space.xxl }}>
       <LinearGradient
         colors={[color.amberDeep, "#8a5b12"]}
         start={{ x: 0, y: 0 }}
@@ -174,7 +205,7 @@ export default function MasterVaultScreen() {
               </View>
             </View>
 
-            <View style={styles.card}>
+            <View style={styles.card} ref={builderRef}>
               <Text style={styles.cardHead}>Build a practice session</Text>
               <Text style={styles.hint}>
                 {selectedChapters.length === 0
