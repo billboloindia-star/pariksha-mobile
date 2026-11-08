@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import * as api from "../../../shared/api";
-import type { BankSectionSummary, Difficulty } from "../../../shared/types";
+import type { BankSectionSummary, BankSubConceptSummary, Difficulty } from "../../../shared/types";
 import { color, font, radius, space, shadow } from "../../theme";
 import RangeSlider from "../../components/RangeSlider";
 import type { VaultStackParamList } from "../../navigation/VaultStack";
@@ -39,6 +39,8 @@ export default function MasterVaultScreen() {
   const [loadError, setLoadError] = useState("");
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+  const [subConceptOptions, setSubConceptOptions] = useState<BankSubConceptSummary[]>([]);
+  const [selectedSubConcepts, setSelectedSubConcepts] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty | "">("");
   const [count, setCount] = useState(20);
   const [duration, setDuration] = useState(20);
@@ -93,19 +95,41 @@ export default function MasterVaultScreen() {
   const totalBankCount = useMemo(() => (sections ?? []).reduce((n, s) => n + s.count, 0), [sections]);
 
   const availableCount = useMemo(() => {
+    if (selectedSubConcepts.length) {
+      return subConceptOptions
+        .filter((s) => selectedSubConcepts.includes(s.subConcept))
+        .reduce((n, s) => n + s.count, 0);
+    }
     const rows = chaptersForSection.filter((c) => selectedChapters.includes(c.chapter));
     if (!difficulty) return rows.reduce((n, c) => n + c.count, 0);
     return rows.reduce((n, c) => n + (c.byDifficulty[difficulty] ?? 0), 0);
-  }, [chaptersForSection, selectedChapters, difficulty]);
+  }, [chaptersForSection, selectedChapters, difficulty, selectedSubConcepts, subConceptOptions]);
 
   function changeSection(name: string) {
     setActiveSection(name);
     setSelectedChapters([]);
+    setSubConceptOptions([]);
+    setSelectedSubConcepts([]);
   }
 
   function toggleChapter(chapter: string) {
     setSelectedChapters((prev) => (prev.includes(chapter) ? prev.filter((c) => c !== chapter) : [...prev, chapter]));
+    setSelectedSubConcepts([]);
   }
+
+  function toggleSubConcept(name: string) {
+    setSelectedSubConcepts((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  }
+
+  // Sub-concept filtering only makes sense with exactly one chapter picked -
+  // it narrows within a single chapter's own topic breakdown.
+  useEffect(() => {
+    if (!activeSection || selectedChapters.length !== 1) {
+      setSubConceptOptions([]);
+      return;
+    }
+    api.fetchBankSubConcepts(activeSection, selectedChapters[0]).then(setSubConceptOptions).catch(() => setSubConceptOptions([]));
+  }, [activeSection, selectedChapters]);
 
   async function generate() {
     if (!activeSection || selectedChapters.length === 0) {
@@ -117,6 +141,7 @@ export default function MasterVaultScreen() {
       const paper = await api.generatePracticePaper({
         section: activeSection,
         chapters: selectedChapters,
+        subConcepts: selectedSubConcepts.length ? selectedSubConcepts : undefined,
         difficulty: difficulty || undefined,
         count: Math.max(1, count),
         durationMinutes: Math.max(1, duration),
@@ -213,6 +238,28 @@ export default function MasterVaultScreen() {
                   : `${availableCount} question${availableCount === 1 ? "" : "s"} available.`}
               </Text>
 
+              {subConceptOptions.length > 0 && (
+                <>
+                  <Text style={styles.fieldLabel}>SUB-CONCEPT (OPTIONAL)</Text>
+                  <View style={styles.subConceptRow}>
+                    {subConceptOptions.map((s) => {
+                      const selected = selectedSubConcepts.includes(s.subConcept);
+                      return (
+                        <Pressable
+                          key={s.subConcept}
+                          style={[styles.subConceptChip, selected && styles.subConceptChipActive]}
+                          onPress={() => toggleSubConcept(s.subConcept)}
+                        >
+                          <Text style={[styles.subConceptChipText, selected && styles.subConceptChipTextActive]}>
+                            {s.subConcept} <Text style={styles.subConceptChipCount}>{s.count}</Text>
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
               <Text style={styles.fieldLabel}>DIFFICULTY</Text>
               <View style={styles.diffRow}>
                 {DIFFICULTIES.map((d) => (
@@ -284,6 +331,12 @@ const styles = StyleSheet.create({
   chapterCountTextSelected: { color: color.white },
   hint: { fontFamily: font.body, fontSize: 13, color: color.inkDim, marginBottom: space.md },
   fieldLabel: { fontFamily: font.bodySemibold, fontSize: 11, letterSpacing: 0.4, color: color.inkFaint, marginBottom: 6, marginTop: space.sm },
+  subConceptRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginBottom: space.md },
+  subConceptChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: color.surfaceSunken },
+  subConceptChipActive: { backgroundColor: color.amberBg, borderColor: color.amberDeep },
+  subConceptChipText: { fontFamily: font.bodyMedium, fontSize: 12.5, color: color.inkDim },
+  subConceptChipTextActive: { color: color.amberDeep },
+  subConceptChipCount: { fontFamily: font.monoSemibold, fontSize: 11, opacity: 0.7 },
   diffRow: { flexDirection: "row", gap: space.sm, marginBottom: space.lg },
   diffBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: color.surfaceSunken, alignItems: "center" },
   diffBtnActive: { backgroundColor: color.amberDeep, borderColor: color.amberDeep },

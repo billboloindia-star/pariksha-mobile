@@ -7,7 +7,7 @@ import {
   CHAPTERS, CHAPTER_ORDER, CHAPTER_GROUPS, CHAPTER_GROUP_LABELS, parseInlineMarkup,
   SQRT_LAST_DIGIT_MAP, IMPOSSIBLE_SQUARE_ENDINGS, CBRT_LAST_DIGIT_MAP,
   findSquareExample, findCubeExample, squareRootSteps, cubeRootSteps, landmarkNums,
-  type ChapterKey,
+  type ChapterKey, type SubConceptNote,
 } from "../../shared/studyVault";
 import { color, font, radius, space } from "../theme";
 import type { RootStackParamList } from "../navigation/types";
@@ -204,6 +204,32 @@ function SpeedMathsShortcuts() {
   );
 }
 
+function SubConceptPanel({ notes }: { notes: SubConceptNote[] }) {
+  const [idx, setIdx] = useState(0);
+  const note = notes[idx];
+  return (
+    <View style={styles.subConcepts}>
+      <Text style={styles.subConceptLbl}>SUB-CONCEPTS IN THIS CHAPTER</Text>
+      <View style={styles.subConceptChips}>
+        {notes.map((n, i) => (
+          <Pressable
+            key={n.name}
+            style={[styles.subConceptChip, i === idx && styles.subConceptChipActive]}
+            onPress={() => setIdx(i)}
+          >
+            <Text style={[styles.subConceptChipText, i === idx && styles.subConceptChipTextActive]}>{n.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.subConceptBody}>
+        <Text style={styles.conceptTitle}>{note.name}</Text>
+        <Text style={styles.conceptBody}>{note.body}</Text>
+        {note.formula && <FormulaLines eq={note.formula} />}
+      </View>
+    </View>
+  );
+}
+
 export default function StudyVaultScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -263,6 +289,8 @@ export default function StudyVaultScreen() {
                 ))}
               </View>
 
+              {ch.subConcepts && <SubConceptPanel key={active} notes={ch.subConcepts} />}
+
               {ch.example && (
                 <View style={styles.exampleBox}>
                   <Text style={styles.elbl}>{ch.example.label.toUpperCase()}</Text>
@@ -313,6 +341,15 @@ const styles = StyleSheet.create({
   fname: { fontFamily: font.bodySemibold, fontSize: 10.5, letterSpacing: 0.4, color: DARK.text, marginBottom: 6 },
   feq: { fontFamily: font.mono, fontSize: 14, fontWeight: "700", color: color.white, lineHeight: 20 },
   fnote: { fontFamily: font.body, fontSize: 11.5, color: DARK.text, lineHeight: 16, marginTop: 6 },
+
+  subConcepts: { marginTop: 18 },
+  subConceptLbl: { fontFamily: font.bodySemibold, fontSize: 10.5, letterSpacing: 0.5, color: DARK.text, marginBottom: 10 },
+  subConceptChips: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 14 },
+  subConceptChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1.5, borderColor: DARK.line2, backgroundColor: DARK.panel2 },
+  subConceptChipActive: { backgroundColor: "#2176d1", borderColor: "transparent" },
+  subConceptChipText: { fontFamily: font.bodySemibold, fontSize: 11.5, color: DARK.text },
+  subConceptChipTextActive: { color: color.white },
+  subConceptBody: { backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: radius.md, padding: 15 },
 
   exampleBox: { marginTop: 18, backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: radius.md, padding: 16 },
   elbl: { fontFamily: font.bodySemibold, fontSize: 10.5, letterSpacing: 0.4, color: "#e8305a", marginBottom: 8 },
