@@ -26,6 +26,8 @@ function subConceptKey(s: { chapter: string; subConcept: string }): string {
   return `${s.chapter}|${s.subConcept}`;
 }
 
+const CHAPTER_DOT_COLORS = ["#6366f1", "#e8305a", "#0ea5a5", "#b5650a", "#2563eb", "#16a34a"];
+
 export default function MasterVaultScreen() {
   const navigation = useNavigation<Nav>();
   const rootNavigation = navigation.getParent<RootNav>() ?? (navigation as unknown as RootNav);
@@ -128,12 +130,36 @@ export default function MasterVaultScreen() {
     setSelectedSubConcepts((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
 
+  function selectAllInChapter(chapter: string, items: BankSubConceptSummary[]) {
+    const keys = items.map(subConceptKey);
+    setSelectedSubConcepts((prev) => [...prev.filter((k) => !k.startsWith(`${chapter}|`)), ...keys]);
+  }
+
+  function clearChapterSubConcepts(chapter: string) {
+    setSelectedSubConcepts((prev) => prev.filter((k) => !k.startsWith(`${chapter}|`)));
+  }
+
+  const [openChapters, setOpenChapters] = useState<Set<string>>(new Set());
+
+  function toggleChapterOpen(chapter: string) {
+    setOpenChapters((prev) => {
+      const next = new Set(prev);
+      if (next.has(chapter)) next.delete(chapter);
+      else next.add(chapter);
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (!activeSection || selectedChapters.length === 0) {
       setSubConceptOptions([]);
       return;
     }
-    api.fetchBankSubConcepts(activeSection, selectedChapters).then(setSubConceptOptions).catch(() => setSubConceptOptions([]));
+    api.fetchBankSubConcepts(activeSection, selectedChapters).then((rows) => {
+      setSubConceptOptions(rows);
+      const firstChapter = rows[0]?.chapter;
+      setOpenChapters(firstChapter ? new Set([firstChapter]) : new Set());
+    }).catch(() => setSubConceptOptions([]));
   }, [activeSection, selectedChapters]);
 
   const subConceptsByChapter = useMemo(() => {
@@ -255,28 +281,62 @@ export default function MasterVaultScreen() {
               {subConceptsByChapter.length > 0 && (
                 <>
                   <Text style={styles.fieldLabel}>SUB-CONCEPT (OPTIONAL)</Text>
-                  {subConceptsByChapter.map(([chapter, items]) => (
-                    <View key={chapter} style={{ marginBottom: space.sm }}>
-                      {subConceptsByChapter.length > 1 && <Text style={styles.subConceptChapterLbl}>{chapter}</Text>}
-                      <View style={styles.subConceptRow}>
-                        {items.map((s) => {
-                          const key = subConceptKey(s);
-                          const selected = selectedSubConcepts.includes(key);
-                          return (
-                            <Pressable
-                              key={key}
-                              style={[styles.subConceptChip, selected && styles.subConceptChipActive]}
-                              onPress={() => toggleSubConcept(key)}
-                            >
-                              <Text style={[styles.subConceptChipText, selected && styles.subConceptChipTextActive]}>
-                                {s.subConcept} <Text style={styles.subConceptChipCount}>{s.count}</Text>
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
+                  {subConceptsByChapter.map(([chapter, items], i) => {
+                    const open = openChapters.has(chapter);
+                    const pickedInChapter = selectedSubConcepts.filter((k) => k.startsWith(`${chapter}|`)).length;
+                    return (
+                      <View key={chapter} style={styles.scBlock}>
+                        <Pressable style={styles.scHead} onPress={() => toggleChapterOpen(chapter)}>
+                          <View style={styles.scHeadLeft}>
+                            <View style={[styles.scDot, { backgroundColor: CHAPTER_DOT_COLORS[i % CHAPTER_DOT_COLORS.length] }]} />
+                            <Text style={styles.scName} numberOfLines={1}>{chapter}</Text>
+                            <Text style={styles.scMeta}>{items.length} sub-concept{items.length === 1 ? "" : "s"}</Text>
+                          </View>
+                          <View style={styles.scHeadRight}>
+                            {pickedInChapter > 0 && (
+                              <View style={styles.scPill}><Text style={styles.scPillText}>{pickedInChapter} selected</Text></View>
+                            )}
+                            <Text style={styles.scChevron}>{open ? "▴" : "▾"}</Text>
+                          </View>
+                        </Pressable>
+                        {open && (
+                          <View style={styles.scBody}>
+                            <View style={styles.scAllNoneRow}>
+                              <Pressable onPress={() => selectAllInChapter(chapter, items)}><Text style={styles.scAllNoneText}>Select all</Text></Pressable>
+                              <Pressable onPress={() => clearChapterSubConcepts(chapter)}><Text style={styles.scAllNoneText}>Clear</Text></Pressable>
+                            </View>
+                            <View style={styles.subConceptRow}>
+                              {items.map((s) => {
+                                const key = subConceptKey(s);
+                                const selected = selectedSubConcepts.includes(key);
+                                return (
+                                  <Pressable
+                                    key={key}
+                                    style={[styles.subConceptChip, selected && styles.subConceptChipActive]}
+                                    onPress={() => toggleSubConcept(key)}
+                                  >
+                                    <Text style={[styles.subConceptChipText, selected && styles.subConceptChipTextActive]}>
+                                      {s.subConcept} <Text style={styles.subConceptChipCount}>{s.count}</Text>
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        )}
                       </View>
+                    );
+                  })}
+                  {selectedSubConcepts.length > 0 && (
+                    <View style={styles.scClearAllRow}>
+                      <Text style={styles.scClearAllSummary}>
+                        <Text style={{ fontFamily: font.bodySemibold, color: color.ink }}>{selectedSubConcepts.length}</Text> sub-concept{selectedSubConcepts.length === 1 ? "" : "s"} selected
+                      </Text>
+                      <Pressable style={styles.scClearAllBtn} onPress={() => setSelectedSubConcepts([])}>
+                        <Text style={styles.scClearAllBtnText}>Clear all</Text>
+                      </Pressable>
                     </View>
-                  ))}
+                  )}
                 </>
               )}
 
@@ -351,8 +411,24 @@ const styles = StyleSheet.create({
   chapterCountTextSelected: { color: color.white },
   hint: { fontFamily: font.body, fontSize: 13, color: color.inkDim, marginBottom: space.md },
   fieldLabel: { fontFamily: font.bodySemibold, fontSize: 11, letterSpacing: 0.4, color: color.inkFaint, marginBottom: 6, marginTop: space.sm },
-  subConceptChapterLbl: { fontFamily: font.bodySemibold, fontSize: 10.5, letterSpacing: 0.3, color: color.inkFaint, marginBottom: 4, textTransform: "uppercase" },
-  subConceptRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginBottom: space.sm },
+  subConceptRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, paddingTop: space.sm },
+  scBlock: { borderWidth: 1.5, borderColor: color.surfaceSunken, borderRadius: radius.md, marginBottom: 10, overflow: "hidden" },
+  scHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, padding: 13, backgroundColor: "#fafbfc" },
+  scHeadLeft: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0 },
+  scHeadRight: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
+  scDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  scName: { fontFamily: font.bodySemibold, fontSize: 13.5, color: color.ink, flexShrink: 1 },
+  scMeta: { fontFamily: font.body, fontSize: 11.5, color: color.inkFaint, flexShrink: 0 },
+  scPill: { backgroundColor: color.amberBg, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 2 },
+  scPillText: { fontFamily: font.bodySemibold, fontSize: 11, color: color.amberDeep },
+  scChevron: { fontSize: 12, color: color.inkFaint },
+  scBody: { paddingHorizontal: 13, paddingBottom: 13 },
+  scAllNoneRow: { flexDirection: "row", gap: 16, paddingTop: 8 },
+  scAllNoneText: { fontFamily: font.bodySemibold, fontSize: 11.5, color: color.amberDeep },
+  scClearAllRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4, marginBottom: space.sm },
+  scClearAllSummary: { fontFamily: font.body, fontSize: 12.5, color: color.inkDim },
+  scClearAllBtn: { borderWidth: 1.5, borderColor: color.surfaceSunken, borderRadius: radius.pill, paddingHorizontal: 13, paddingVertical: 7 },
+  scClearAllBtnText: { fontFamily: font.bodySemibold, fontSize: 12, color: color.inkDim },
   subConceptChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: color.surfaceSunken },
   subConceptChipActive: { backgroundColor: color.amberBg, borderColor: color.amberDeep },
   subConceptChipText: { fontFamily: font.bodyMedium, fontSize: 12.5, color: color.inkDim },
