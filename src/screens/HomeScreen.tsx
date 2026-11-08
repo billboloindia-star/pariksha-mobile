@@ -189,6 +189,24 @@ export default function HomeScreen() {
         </LinearGradient>
       )}
 
+      {api.canUseBankFeature(session) && (
+        <LinearGradient
+          colors={["#0b1626", "#1c2d45", "#3fa5ff"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.speedCard}
+        >
+          <Pressable style={styles.speedCardInner} onPress={() => rootNavigation.navigate("StudyVault")}>
+            <View style={styles.speedIconWrap}><Text style={{ fontSize: 18 }}>📘</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.speedTitle}>Study Vault</Text>
+              <Text style={styles.speedSub}>Formulas, concepts & shortcuts by chapter</Text>
+            </View>
+            <Text style={styles.speedGo}>Go →</Text>
+          </Pressable>
+        </LinearGradient>
+      )}
+
       {history && history.length > 0 ? (
         <LinearGradient
           colors={["#0a1b36", "#1d4ed8", "#38bdf8"]}

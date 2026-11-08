@@ -14,4 +14,5 @@ export type RootStackParamList = {
   Report: { result: ExamResult };
   SpeedMaths: undefined;
   TargetExam: undefined;
+  StudyVault: undefined;
 };

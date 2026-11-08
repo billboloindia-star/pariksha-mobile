@@ -9,6 +9,8 @@ import {
   generateSpeedMathQuestion,
   checkSpeedMathAnswer,
   summarizeSpeedMathSession,
+  getTableRow,
+  FRACTION_TABLE,
   type SpeedMathType,
   type SpeedMathQuestion,
   type SpeedMathRecord,
@@ -20,13 +22,122 @@ import type { RootStackParamList } from "../navigation/types";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "SpeedMaths">;
 type Phase = "setup" | "drill" | "results";
+type SetupMode = "drill" | "reference";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 const DURATION_OPTIONS = [2, 5, 10];
 
+type RefMode = "tables" | "squares" | "cubes" | "sqrt" | "cbrt" | "fractions";
+const REF_TAB_ORDER: RefMode[] = ["tables", "squares", "cubes", "sqrt", "cbrt", "fractions"];
+const REF_TAB_LABELS: Record<RefMode, string> = {
+  tables: "Tables", squares: "Squares", cubes: "Cubes", sqrt: "Square Root", cbrt: "Cube Root", fractions: "Fractions",
+};
+const REF_START: Record<RefMode, number> = { tables: 7, squares: 12, cubes: 7, sqrt: 12, cbrt: 7, fractions: 2 };
+const REF_MAX: Record<RefMode, number> = { tables: 25, squares: 50, cubes: 30, sqrt: 50, cbrt: 30, fractions: 20 };
+const REF_MIN: Record<RefMode, number> = { tables: 1, squares: 1, cubes: 1, sqrt: 1, cbrt: 1, fractions: 2 };
+const REF_CHIP_W = 40; // chip width + gap, used to scroll the active one into view
+
+interface RefRow { l: string; r: string | number; hi?: boolean }
+
+function refRows(mode: RefMode, n: number): RefRow[] {
+  if (mode === "tables") return getTableRow(n).map((r) => ({ l: `${n} × ${r.multiple}`, r: r.product }));
+  if (mode === "fractions") {
+    return FRACTION_TABLE.filter((f) => f.den === n).map((f) => ({ l: `${f.num}/${f.den}`, r: `${f.truncPct.toFixed(2)}%` }));
+  }
+  const max = mode === "cubes" || mode === "cbrt" ? 30 : 50;
+  const out: RefRow[] = [];
+  for (let k = Math.max(1, n - 3); k <= Math.min(max, n + 3); k++) {
+    if (mode === "squares") out.push({ l: `${k}²`, r: k * k, hi: k === n });
+    else if (mode === "cubes") out.push({ l: `${k}³`, r: k * k * k, hi: k === n });
+    else if (mode === "sqrt") out.push({ l: `√${k * k}`, r: k, hi: k === n });
+    else if (mode === "cbrt") out.push({ l: `∛${k * k * k}`, r: k, hi: k === n });
+  }
+  return out;
+}
+
+function refLabel(mode: RefMode, n: number): string {
+  if (mode === "tables") return `Table of ${n}`;
+  if (mode === "fractions") return `Denominator ${n}`;
+  if (mode === "squares") return `${n}²`;
+  if (mode === "cubes") return `${n}³`;
+  if (mode === "sqrt") return `√${n * n} = ?`;
+  return `∛${n * n * n} = ?`;
+}
+
+function refBig(mode: RefMode, n: number): string {
+  if (mode === "tables" || mode === "fractions") return "";
+  if (mode === "squares") return `${n * n}`;
+  if (mode === "cubes") return `${n * n * n}`;
+  return `${n}`;
+}
+
+function ReferenceStage() {
+  const [mode, setMode] = useState<RefMode>("tables");
+  const [current, setCurrent] = useState(7);
+  // RN 0.88/React 19's new host-component ref types don't expose scrollTo here.
+  const stripRef = useRef<any>(null);
+
+  useEffect(() => {
+    const idx = (mode === "fractions" ? current - REF_MIN.fractions : current - 1);
+    const x = Math.max(0, idx * REF_CHIP_W - 150);
+    stripRef.current?.scrollTo({ x, animated: true });
+  }, [mode, current]);
+
+  const rows = refRows(mode, current);
+  const big = refBig(mode, current);
+  const values = mode === "fractions"
+    ? Array.from({ length: REF_MAX.fractions - REF_MIN.fractions + 1 }, (_, i) => i + REF_MIN.fractions)
+    : Array.from({ length: REF_MAX[mode] }, (_, i) => i + 1);
+
+  return (
+    <View>
+      <View style={styles.refTabRow}>
+        {REF_TAB_ORDER.map((m) => (
+          <Pressable key={m} style={[styles.refTabBtn, mode === m && styles.refTabBtnActive]} onPress={() => { setMode(m); setCurrent(REF_START[m]); }}>
+            <Text style={[styles.refTabBtnText, mode === m && styles.refTabBtnTextActive]}>{REF_TAB_LABELS[m]}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <LinearGradient colors={["#0b1626", "#081222"]} style={styles.refStage}>
+        <View style={styles.refPickRow}>
+          <Pressable style={styles.refPickArrow} onPress={() => setCurrent((c) => Math.max(REF_MIN[mode], c - 1))}>
+            <Text style={styles.refPickArrowText}>‹</Text>
+          </Pressable>
+          <ScrollView ref={stripRef} horizontal showsHorizontalScrollIndicator={false} style={styles.refPickStrip} contentContainerStyle={{ paddingHorizontal: 8 }}>
+            {values.map((v) => (
+              <Pressable key={v} style={[styles.refPickChip, current === v && styles.refPickChipActive]} onPress={() => setCurrent(v)}>
+                <Text style={[styles.refPickChipText, current === v && styles.refPickChipTextActive]}>{mode === "fractions" ? `/${v}` : v}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable style={styles.refPickArrow} onPress={() => setCurrent((c) => Math.min(REF_MAX[mode], c + 1))}>
+            <Text style={styles.refPickArrowText}>›</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.refBigAnswer}>
+          <Text style={[styles.refEq, !big && styles.refEqNoVal]}>{refLabel(mode, current)}</Text>
+          {!!big && <Text style={styles.refVal}>{big}</Text>}
+        </View>
+
+        <View style={styles.refMiniList}>
+          {rows.map((r) => (
+            <View style={[styles.refMiniRow, r.hi && styles.refMiniRowCurrent]} key={r.l}>
+              <Text style={[styles.refMiniRowL, r.hi && styles.refMiniRowTextCurrent]}>{r.l}</Text>
+              <Text style={[styles.refMiniRowR, r.hi && styles.refMiniRowTextCurrent]}>{r.r}</Text>
+            </View>
+          ))}
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
 export default function SpeedMathsScreen() {
   const navigation = useNavigation<Nav>();
   const [phase, setPhase] = useState<Phase>("setup");
+  const [setupMode, setSetupMode] = useState<SetupMode>("drill");
   const [types, setTypes] = useState<Set<SpeedMathType>>(new Set(ALL_SPEED_MATH_TYPES));
   const [paceMode, setPaceMode] = useState<SpeedMathPaceMode>("count");
   const [count, setCount] = useState(20);
@@ -141,49 +252,64 @@ export default function SpeedMathsScreen() {
         </LinearGradient>
 
         <View style={styles.body}>
-          <View style={styles.card}>
-            <Text style={styles.cardHead}>What to practice</Text>
-            <View style={styles.chipGrid}>
-              {ALL_SPEED_MATH_TYPES.map((t) => (
-                <Pressable key={t} style={[styles.typeChip, types.has(t) && styles.typeChipActive]} onPress={() => toggleType(t)}>
-                  <Text style={[styles.typeChipText, types.has(t) && styles.typeChipTextActive]}>{SPEED_MATH_LABELS[t]}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.hint}>Select one or more. Leave several selected for a mixed drill.</Text>
+          <View style={styles.setupModeRow}>
+            <Pressable style={[styles.setupModeBtn, setupMode === "drill" && styles.setupModeBtnActive]} onPress={() => setSetupMode("drill")}>
+              <Text style={[styles.setupModeBtnText, setupMode === "drill" && styles.setupModeBtnTextActive]}>Drill</Text>
+            </Pressable>
+            <Pressable style={[styles.setupModeBtn, setupMode === "reference" && styles.setupModeBtnActive]} onPress={() => setSetupMode("reference")}>
+              <Text style={[styles.setupModeBtnText, setupMode === "reference" && styles.setupModeBtnTextActive]}>Study material</Text>
+            </Pressable>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardHead}>Pace</Text>
-            <View style={styles.paceRow}>
-              <Pressable style={[styles.paceBtn, paceMode === "count" && styles.paceBtnActive]} onPress={() => setPaceMode("count")}>
-                <Text style={[styles.paceBtnText, paceMode === "count" && styles.paceBtnTextActive]}>No timer</Text>
-              </Pressable>
-              <Pressable style={[styles.paceBtn, paceMode === "timed" && styles.paceBtnActive]} onPress={() => setPaceMode("timed")}>
-                <Text style={[styles.paceBtnText, paceMode === "timed" && styles.paceBtnTextActive]}>Timed</Text>
-              </Pressable>
-            </View>
-            <View style={styles.optRow}>
-              {(paceMode === "count" ? COUNT_OPTIONS : DURATION_OPTIONS).map((v) => {
-                const active = paceMode === "count" ? count === v : durationSec === v * 60;
-                return (
-                  <Pressable
-                    key={v}
-                    style={[styles.optChip, active && styles.optChipActive]}
-                    onPress={() => (paceMode === "count" ? setCount(v) : setDurationSec(v * 60))}
-                  >
-                    <Text style={[styles.optChipText, active && styles.optChipTextActive]}>
-                      {paceMode === "count" ? `${v} questions` : `${v} min`}
-                    </Text>
+          {setupMode === "reference" ? (
+            <ReferenceStage />
+          ) : (
+            <>
+              <View style={styles.card}>
+                <Text style={styles.cardHead}>What to practice</Text>
+                <View style={styles.chipGrid}>
+                  {ALL_SPEED_MATH_TYPES.map((t) => (
+                    <Pressable key={t} style={[styles.typeChip, types.has(t) && styles.typeChipActive]} onPress={() => toggleType(t)}>
+                      <Text style={[styles.typeChipText, types.has(t) && styles.typeChipTextActive]}>{SPEED_MATH_LABELS[t]}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.hint}>Select one or more. Leave several selected for a mixed drill.</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.cardHead}>Pace</Text>
+                <View style={styles.paceRow}>
+                  <Pressable style={[styles.paceBtn, paceMode === "count" && styles.paceBtnActive]} onPress={() => setPaceMode("count")}>
+                    <Text style={[styles.paceBtnText, paceMode === "count" && styles.paceBtnTextActive]}>No timer</Text>
                   </Pressable>
-                );
-              })}
-            </View>
-          </View>
+                  <Pressable style={[styles.paceBtn, paceMode === "timed" && styles.paceBtnActive]} onPress={() => setPaceMode("timed")}>
+                    <Text style={[styles.paceBtnText, paceMode === "timed" && styles.paceBtnTextActive]}>Timed</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.optRow}>
+                  {(paceMode === "count" ? COUNT_OPTIONS : DURATION_OPTIONS).map((v) => {
+                    const active = paceMode === "count" ? count === v : durationSec === v * 60;
+                    return (
+                      <Pressable
+                        key={v}
+                        style={[styles.optChip, active && styles.optChipActive]}
+                        onPress={() => (paceMode === "count" ? setCount(v) : setDurationSec(v * 60))}
+                      >
+                        <Text style={[styles.optChipText, active && styles.optChipTextActive]}>
+                          {paceMode === "count" ? `${v} questions` : `${v} min`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
-          <Pressable style={[styles.startBtn, types.size === 0 && { opacity: 0.5 }]} disabled={types.size === 0} onPress={startSession}>
-            <Text style={styles.startBtnText}>Start drill</Text>
-          </Pressable>
+              <Pressable style={[styles.startBtn, types.size === 0 && { opacity: 0.5 }]} disabled={types.size === 0} onPress={startSession}>
+                <Text style={styles.startBtnText}>Start drill</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </ScrollView>
     );
@@ -284,6 +410,41 @@ const styles = StyleSheet.create({
   heroSub: { fontFamily: font.body, fontSize: 13, color: "rgba(255,255,255,0.82)", lineHeight: 18 },
 
   body: { padding: space.xl },
+
+  setupModeRow: { flexDirection: "row", gap: 8, marginBottom: space.lg },
+  setupModeBtn: { flex: 1, paddingVertical: 11, borderRadius: radius.md, borderWidth: 1.5, borderColor: color.surfaceSunken, backgroundColor: color.surfaceAlt, alignItems: "center" },
+  setupModeBtnActive: { backgroundColor: "#111827", borderColor: "#111827" },
+  setupModeBtnText: { fontFamily: font.bodySemibold, fontSize: 13.5, color: color.inkDim },
+  setupModeBtnTextActive: { color: color.white },
+
+  refTabRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: space.lg },
+  refTabBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1.5, borderColor: color.surfaceSunken, backgroundColor: color.surfaceAlt },
+  refTabBtnActive: { backgroundColor: "#111827", borderColor: "#111827" },
+  refTabBtnText: { fontFamily: font.bodySemibold, fontSize: 12, color: color.inkDim },
+  refTabBtnTextActive: { color: color.white },
+
+  refStage: { borderRadius: radius.xl, padding: 24, alignItems: "center" },
+  refPickRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 22, width: "100%" },
+  refPickArrow: { width: 32, height: 32, borderRadius: 16, borderWidth: 1.5, borderColor: color.consoleLine2, backgroundColor: color.consolePanel2, alignItems: "center", justifyContent: "center" },
+  refPickArrowText: { color: color.white, fontSize: 15, fontFamily: font.bodySemibold },
+  refPickStrip: { flex: 1, maxWidth: 220 },
+  refPickChip: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 6 },
+  refPickChipActive: { backgroundColor: "#e8305a" },
+  refPickChipText: { fontFamily: font.mono, fontSize: 11, color: color.consoleText },
+  refPickChipTextActive: { color: color.white, fontFamily: font.monoBold },
+
+  refBigAnswer: { alignItems: "center", marginBottom: 4 },
+  refEq: { fontFamily: font.mono, fontSize: 16, color: color.consoleText, marginBottom: 4 },
+  refEqNoVal: { fontSize: 19, color: color.white, marginBottom: 0 },
+  refVal: { fontFamily: font.monoBold, fontSize: 46, color: color.white },
+
+  refMiniList: { width: "100%", marginTop: 22 },
+  refMiniRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: color.consoleLine },
+  refMiniRowCurrent: { backgroundColor: "rgba(232,48,90,0.14)", borderRadius: 8, borderBottomWidth: 0, marginVertical: 1 },
+  refMiniRowL: { fontFamily: font.mono, fontSize: 12.5, color: color.white },
+  refMiniRowR: { fontFamily: font.mono, fontSize: 12.5, color: color.consoleText },
+  refMiniRowTextCurrent: { fontFamily: font.monoBold, color: color.white },
+
   card: { backgroundColor: color.surface, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg, ...shadow.soft },
   cardHead: { fontFamily: font.displaySemibold, fontSize: 15, color: color.ink, marginBottom: space.md },
   hint: { fontFamily: font.body, fontSize: 11.5, color: color.inkFaint, marginTop: space.sm },
