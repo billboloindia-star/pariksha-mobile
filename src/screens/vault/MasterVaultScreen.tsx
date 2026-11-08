@@ -22,6 +22,10 @@ const DIFFICULTIES: { value: Difficulty | ""; label: string }[] = [
   { value: "hard", label: "Hard" },
 ];
 
+function subConceptKey(s: { chapter: string; subConcept: string }): string {
+  return `${s.chapter}|${s.subConcept}`;
+}
+
 export default function MasterVaultScreen() {
   const navigation = useNavigation<Nav>();
   const rootNavigation = navigation.getParent<RootNav>() ?? (navigation as unknown as RootNav);
@@ -97,7 +101,7 @@ export default function MasterVaultScreen() {
   const availableCount = useMemo(() => {
     if (selectedSubConcepts.length) {
       return subConceptOptions
-        .filter((s) => selectedSubConcepts.includes(s.subConcept))
+        .filter((s) => selectedSubConcepts.includes(subConceptKey(s)))
         .reduce((n, s) => n + s.count, 0);
     }
     const rows = chaptersForSection.filter((c) => selectedChapters.includes(c.chapter));
@@ -113,23 +117,33 @@ export default function MasterVaultScreen() {
   }
 
   function toggleChapter(chapter: string) {
-    setSelectedChapters((prev) => (prev.includes(chapter) ? prev.filter((c) => c !== chapter) : [...prev, chapter]));
-    setSelectedSubConcepts([]);
+    const removing = selectedChapters.includes(chapter);
+    setSelectedChapters((prev) => (removing ? prev.filter((c) => c !== chapter) : [...prev, chapter]));
+    if (removing) {
+      setSelectedSubConcepts((prev) => prev.filter((k) => !k.startsWith(`${chapter}|`)));
+    }
   }
 
-  function toggleSubConcept(name: string) {
-    setSelectedSubConcepts((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  function toggleSubConcept(key: string) {
+    setSelectedSubConcepts((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
 
-  // Sub-concept filtering only makes sense with exactly one chapter picked -
-  // it narrows within a single chapter's own topic breakdown.
   useEffect(() => {
-    if (!activeSection || selectedChapters.length !== 1) {
+    if (!activeSection || selectedChapters.length === 0) {
       setSubConceptOptions([]);
       return;
     }
-    api.fetchBankSubConcepts(activeSection, selectedChapters[0]).then(setSubConceptOptions).catch(() => setSubConceptOptions([]));
+    api.fetchBankSubConcepts(activeSection, selectedChapters).then(setSubConceptOptions).catch(() => setSubConceptOptions([]));
   }, [activeSection, selectedChapters]);
+
+  const subConceptsByChapter = useMemo(() => {
+    const groups = new Map<string, BankSubConceptSummary[]>();
+    for (const s of subConceptOptions) {
+      if (!groups.has(s.chapter)) groups.set(s.chapter, []);
+      groups.get(s.chapter)!.push(s);
+    }
+    return Array.from(groups.entries());
+  }, [subConceptOptions]);
 
   async function generate() {
     if (!activeSection || selectedChapters.length === 0) {
@@ -238,25 +252,31 @@ export default function MasterVaultScreen() {
                   : `${availableCount} question${availableCount === 1 ? "" : "s"} available.`}
               </Text>
 
-              {subConceptOptions.length > 0 && (
+              {subConceptsByChapter.length > 0 && (
                 <>
                   <Text style={styles.fieldLabel}>SUB-CONCEPT (OPTIONAL)</Text>
-                  <View style={styles.subConceptRow}>
-                    {subConceptOptions.map((s) => {
-                      const selected = selectedSubConcepts.includes(s.subConcept);
-                      return (
-                        <Pressable
-                          key={s.subConcept}
-                          style={[styles.subConceptChip, selected && styles.subConceptChipActive]}
-                          onPress={() => toggleSubConcept(s.subConcept)}
-                        >
-                          <Text style={[styles.subConceptChipText, selected && styles.subConceptChipTextActive]}>
-                            {s.subConcept} <Text style={styles.subConceptChipCount}>{s.count}</Text>
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  {subConceptsByChapter.map(([chapter, items]) => (
+                    <View key={chapter} style={{ marginBottom: space.sm }}>
+                      {subConceptsByChapter.length > 1 && <Text style={styles.subConceptChapterLbl}>{chapter}</Text>}
+                      <View style={styles.subConceptRow}>
+                        {items.map((s) => {
+                          const key = subConceptKey(s);
+                          const selected = selectedSubConcepts.includes(key);
+                          return (
+                            <Pressable
+                              key={key}
+                              style={[styles.subConceptChip, selected && styles.subConceptChipActive]}
+                              onPress={() => toggleSubConcept(key)}
+                            >
+                              <Text style={[styles.subConceptChipText, selected && styles.subConceptChipTextActive]}>
+                                {s.subConcept} <Text style={styles.subConceptChipCount}>{s.count}</Text>
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ))}
                 </>
               )}
 
@@ -331,7 +351,8 @@ const styles = StyleSheet.create({
   chapterCountTextSelected: { color: color.white },
   hint: { fontFamily: font.body, fontSize: 13, color: color.inkDim, marginBottom: space.md },
   fieldLabel: { fontFamily: font.bodySemibold, fontSize: 11, letterSpacing: 0.4, color: color.inkFaint, marginBottom: 6, marginTop: space.sm },
-  subConceptRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginBottom: space.md },
+  subConceptChapterLbl: { fontFamily: font.bodySemibold, fontSize: 10.5, letterSpacing: 0.3, color: color.inkFaint, marginBottom: 4, textTransform: "uppercase" },
+  subConceptRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginBottom: space.sm },
   subConceptChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: color.surfaceSunken },
   subConceptChipActive: { backgroundColor: color.amberBg, borderColor: color.amberDeep },
   subConceptChipText: { fontFamily: font.bodyMedium, fontSize: 12.5, color: color.inkDim },
