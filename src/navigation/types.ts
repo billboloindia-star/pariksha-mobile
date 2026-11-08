@@ -15,4 +15,5 @@ export type RootStackParamList = {
   SpeedMaths: undefined;
   TargetExam: undefined;
   StudyVault: undefined;
+  Bookmarks: undefined;
 };

@@ -7,6 +7,7 @@ import * as api from "../../shared/api";
 import type { Status } from "../../shared/types";
 import { buildResult } from "../../shared/scoring";
 import { rnExamPlatform } from "../platform/examPlatform";
+import BookmarkStar from "../components/BookmarkStar";
 import { color, font, radius, space, shadow } from "../theme";
 import type { RootStackParamList } from "../navigation/types";
 
@@ -175,8 +176,11 @@ export default function ExamScreen() {
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.lg, paddingBottom: 140 }}>
         <View style={styles.qTopRow}>
-          <Text style={styles.qNo}>Question {exam.idx + 1} of {paper.questions.length}</Text>
-          <Text style={styles.marks}>+1.0 / -{paper.negativeMarking}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            <Text style={styles.qNo}>Question {exam.idx + 1} of {paper.questions.length}</Text>
+            <Text style={styles.marks}>+1.0 / -{paper.negativeMarking}</Text>
+          </View>
+          <BookmarkStar q={q} given={st.given} sourceLabel={paper.title} key={q.id} />
         </View>
         <View style={styles.chipRow}>
           <View style={styles.chip}><Text style={styles.chipText}>{q.topic}</Text></View>

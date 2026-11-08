@@ -207,6 +207,24 @@ export default function HomeScreen() {
         </LinearGradient>
       )}
 
+      {session && (
+        <LinearGradient
+          colors={["#3b0f22", "#c91c46", "#e8305a"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.speedCard}
+        >
+          <Pressable style={styles.speedCardInner} onPress={() => rootNavigation.navigate("Bookmarks")}>
+            <View style={styles.speedIconWrap}><Text style={{ fontSize: 18 }}>⭐</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.speedTitle}>Bookmarks</Text>
+              <Text style={styles.speedSub}>Questions you've starred, grouped by chapter</Text>
+            </View>
+            <Text style={styles.speedGo}>Go →</Text>
+          </Pressable>
+        </LinearGradient>
+      )}
+
       {history && history.length > 0 ? (
         <LinearGradient
           colors={["#0a1b36", "#1d4ed8", "#38bdf8"]}

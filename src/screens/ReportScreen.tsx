@@ -8,6 +8,7 @@ import { loadLocalHistory, saveLocalHistory } from "../../shared/history";
 import type { AttemptQuestionRecord, AttemptRecord } from "../../shared/types";
 import { color, font, radius, space } from "../theme";
 import HaloRing from "../components/HaloRing";
+import BookmarkStar from "../components/BookmarkStar";
 import type { RootStackParamList } from "../navigation/types";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Report">;
@@ -130,7 +131,10 @@ export default function ReportScreen() {
             <Text style={styles.cardHead}>Review your mistakes ({mistakes.length})</Text>
             {mistakes.slice(0, 15).map(({ q, i, s }) => (
               <View key={i} style={styles.mistakeRow}>
-                <Text style={styles.mistakeQ} numberOfLines={2}>{i + 1}. {q.text}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space.sm }}>
+                  <Text style={[styles.mistakeQ, { flex: 1 }]} numberOfLines={2}>{i + 1}. {q.text}</Text>
+                  <BookmarkStar q={q} given={s.given} wasCorrect={false} sourceLabel={paper.title} key={q.id} />
+                </View>
                 <Text style={styles.mistakeAns}>
                   Your answer: <Text style={styles.badText}>{q.type === "mc" ? (q.options?.[s.given!] ?? s.given) : s.given}</Text>
                   {"  ·  "}Correct: <Text style={styles.goodText}>{q.type === "mc" ? (q.options?.[q.ans] ?? q.ans) : q.ans}</Text>

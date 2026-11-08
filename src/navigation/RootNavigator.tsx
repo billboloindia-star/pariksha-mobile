@@ -12,6 +12,7 @@ import ReportScreen from "../screens/ReportScreen";
 import SpeedMathsScreen from "../screens/SpeedMathsScreen";
 import TargetExamScreen from "../screens/targetExam/TargetExamScreen";
 import StudyVaultScreen from "../screens/StudyVaultScreen";
+import BookmarksScreen from "../screens/BookmarksScreen";
 import { color } from "../theme";
 import type { RootStackParamList } from "./types";
 import { loadInProgress } from "../../shared/examPersist";
@@ -59,6 +60,7 @@ export default function RootNavigator() {
         <Stack.Screen name="SpeedMaths" component={SpeedMathsScreen} />
         <Stack.Screen name="TargetExam" component={TargetExamScreen} />
         <Stack.Screen name="StudyVault" component={StudyVaultScreen} />
+        <Stack.Screen name="Bookmarks" component={BookmarksScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
