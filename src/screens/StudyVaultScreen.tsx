@@ -337,7 +337,7 @@ export default function StudyVaultScreen() {
               </View>
 
               {ch.subConcepts && <SubConceptPanel notes={ch.subConcepts} />}
-              {ch.notesPages && <NotesGallery title={ch.label} pages={ch.notesPages} />}
+              {!ch.subConcepts && ch.notesPages && <NotesGallery title={ch.label} pages={ch.notesPages} />}
 
               {ch.example && (
                 <View style={styles.exampleBox}>
