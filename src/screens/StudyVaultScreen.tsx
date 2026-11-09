@@ -310,7 +310,7 @@ export default function StudyVaultScreen() {
           </View>
         ))}
 
-        <View style={styles.stage}>
+        <View style={styles.stage} key={active}>
           {ch.isSpeedMaths ? (
             <SpeedMathsShortcuts />
           ) : (
@@ -336,8 +336,8 @@ export default function StudyVaultScreen() {
                 ))}
               </View>
 
-              {ch.subConcepts && <SubConceptPanel key={active} notes={ch.subConcepts} />}
-              {ch.notesPages && <NotesGallery key={active} title={ch.label} pages={ch.notesPages} />}
+              {ch.subConcepts && <SubConceptPanel notes={ch.subConcepts} />}
+              {ch.notesPages && <NotesGallery title={ch.label} pages={ch.notesPages} />}
 
               {ch.example && (
                 <View style={styles.exampleBox}>
