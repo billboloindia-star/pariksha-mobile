@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal } from "react-native";
+import { useState, useRef } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -207,6 +207,26 @@ function SpeedMathsShortcuts() {
 function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  // Swipe left/right on the page image to go next/prev - refs keep the
+  // PanResponder (created once) reading live state instead of a stale closure.
+  const lightboxRef = useRef(lightbox);
+  lightboxRef.current = lightbox;
+  const pagesLenRef = useRef(pages.length);
+  pagesLenRef.current = pages.length;
+  const swipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderRelease: (_e, g) => {
+        const cur = lightboxRef.current;
+        if (cur === null) return;
+        if (g.dx <= -50 && cur < pagesLenRef.current - 1) setLightbox(cur + 1);
+        else if (g.dx >= 50 && cur > 0) setLightbox(cur - 1);
+      },
+    })
+  ).current;
+
   if (pages.length === 0) return null;
 
   const closeLightbox = () => { setLightbox(null); setFullscreen(false); };
@@ -239,18 +259,20 @@ function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
               </View>
             )}
             {lightbox !== null && (
-              <Image
-                source={{ uri: pages[lightbox] }}
-                style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
-                resizeMode="contain"
-              />
+              <View style={fullscreen ? styles.lightboxImgWrapFull : undefined} {...swipeResponder.panHandlers}>
+                <Image
+                  source={{ uri: pages[lightbox] }}
+                  style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
+                  resizeMode="contain"
+                />
+              </View>
             )}
             {fullscreen && (
-              <Pressable style={styles.lightboxShrinkBtn} onPress={() => setFullscreen(false)}>
+              <Pressable style={[styles.lightboxShrinkBtn, { top: insets.top + 12 }]} onPress={() => setFullscreen(false)}>
                 <Text style={styles.lightboxExpand}>⤢</Text>
               </Pressable>
             )}
-            <View style={fullscreen ? styles.lightboxNavFull : styles.lightboxNav}>
+            <View style={fullscreen ? [styles.lightboxNavFull, { bottom: insets.bottom + 20 }] : styles.lightboxNav}>
               <Pressable
                 disabled={lightbox === 0}
                 style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
@@ -440,9 +462,10 @@ const styles = StyleSheet.create({
 
   lightboxBackdropFull: { flex: 1, backgroundColor: "#000" },
   lightboxInnerFull: { flex: 1, width: "100%" },
+  lightboxImgWrapFull: { flex: 1, width: "100%" },
   lightboxImgFull: { flex: 1, width: "100%", backgroundColor: "#000" },
   lightboxShrinkBtn: { position: "absolute", top: 44, right: 16, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center", zIndex: 2 },
-  lightboxNavFull: { position: "absolute", bottom: 28, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10 },
+  lightboxNavFull: { position: "absolute", bottom: 28, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10, zIndex: 2 },
   lightboxNavBtnFull: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center" },
   lightboxNavFullCount: { fontFamily: font.bodySemibold, fontSize: 12, color: color.white, paddingHorizontal: 6 },
   lightboxNavBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: DARK.line2, backgroundColor: DARK.panel, alignItems: "center" },
