@@ -206,7 +206,11 @@ function SpeedMathsShortcuts() {
 
 function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   if (pages.length === 0) return null;
+
+  const closeLightbox = () => { setLightbox(null); setFullscreen(false); };
+
   return (
     <View style={styles.notesGallery}>
       <Text style={styles.notesGalleryLbl}>TEACHER'S HANDWRITTEN NOTES ({pages.length} PAGE{pages.length > 1 ? "S" : ""})</Text>
@@ -219,25 +223,45 @@ function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
           ))}
         </View>
       </ScrollView>
-      <Modal visible={lightbox !== null} transparent animationType="fade" onRequestClose={() => setLightbox(null)}>
-        <Pressable style={styles.lightboxBackdrop} onPress={() => setLightbox(null)}>
-          <Pressable style={styles.lightboxInner} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.lightboxHead}>
-              <Text style={styles.lightboxHeadText}>{title} — page {(lightbox ?? 0) + 1} of {pages.length}</Text>
-              <Pressable onPress={() => setLightbox(null)}><Text style={styles.lightboxClose}>✕</Text></Pressable>
-            </View>
-            {lightbox !== null && <Image source={{ uri: pages[lightbox] }} style={styles.lightboxImg} resizeMode="contain" />}
-            <View style={styles.lightboxNav}>
+      <Modal visible={lightbox !== null} transparent={!fullscreen} animationType="fade" onRequestClose={fullscreen ? () => setFullscreen(false) : closeLightbox}>
+        <Pressable
+          style={fullscreen ? styles.lightboxBackdropFull : styles.lightboxBackdrop}
+          onPress={fullscreen ? undefined : closeLightbox}
+        >
+          <Pressable style={fullscreen ? styles.lightboxInnerFull : styles.lightboxInner} onPress={(e) => e.stopPropagation()}>
+            {!fullscreen && (
+              <View style={styles.lightboxHead}>
+                <Text style={styles.lightboxHeadText}>{title} — page {(lightbox ?? 0) + 1} of {pages.length}</Text>
+                <View style={styles.lightboxHeadBtns}>
+                  <Pressable onPress={() => setFullscreen(true)}><Text style={styles.lightboxExpand}>⛶</Text></Pressable>
+                  <Pressable onPress={closeLightbox}><Text style={styles.lightboxClose}>✕</Text></Pressable>
+                </View>
+              </View>
+            )}
+            {lightbox !== null && (
+              <Image
+                source={{ uri: pages[lightbox] }}
+                style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
+                resizeMode="contain"
+              />
+            )}
+            {fullscreen && (
+              <Pressable style={styles.lightboxShrinkBtn} onPress={() => setFullscreen(false)}>
+                <Text style={styles.lightboxExpand}>⤢</Text>
+              </Pressable>
+            )}
+            <View style={fullscreen ? styles.lightboxNavFull : styles.lightboxNav}>
               <Pressable
                 disabled={lightbox === 0}
-                style={[styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
+                style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
                 onPress={() => setLightbox((i) => (i ?? 0) - 1)}
               >
                 <Text style={styles.lightboxNavBtnText}>← Prev</Text>
               </Pressable>
+              {fullscreen && <Text style={styles.lightboxNavFullCount}>{(lightbox ?? 0) + 1} / {pages.length}</Text>}
               <Pressable
                 disabled={lightbox === pages.length - 1}
-                style={[styles.lightboxNavBtn, lightbox === pages.length - 1 && styles.lightboxNavBtnDisabled]}
+                style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === pages.length - 1 && styles.lightboxNavBtnDisabled]}
                 onPress={() => setLightbox((i) => (i ?? 0) + 1)}
               >
                 <Text style={styles.lightboxNavBtnText}>Next →</Text>
@@ -408,9 +432,19 @@ const styles = StyleSheet.create({
   lightboxInner: { backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: radius.md, padding: 14, width: "100%", maxHeight: "90%" },
   lightboxHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   lightboxHeadText: { fontFamily: font.bodySemibold, fontSize: 12, color: DARK.text, flexShrink: 1, paddingRight: 10 },
+  lightboxHeadBtns: { flexDirection: "row", alignItems: "center", gap: 14 },
+  lightboxExpand: { fontSize: 18, color: DARK.text, padding: 4 },
   lightboxClose: { fontSize: 18, color: DARK.text, padding: 4 },
   lightboxImg: { width: "100%", height: 420, borderRadius: 8, backgroundColor: color.white },
   lightboxNav: { flexDirection: "row", gap: 10, marginTop: 12 },
+
+  lightboxBackdropFull: { flex: 1, backgroundColor: "#000" },
+  lightboxInnerFull: { flex: 1, width: "100%" },
+  lightboxImgFull: { flex: 1, width: "100%", backgroundColor: "#000" },
+  lightboxShrinkBtn: { position: "absolute", top: 44, right: 16, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center", zIndex: 2 },
+  lightboxNavFull: { position: "absolute", bottom: 28, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10 },
+  lightboxNavBtnFull: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center" },
+  lightboxNavFullCount: { fontFamily: font.bodySemibold, fontSize: 12, color: color.white, paddingHorizontal: 6 },
   lightboxNavBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: DARK.line2, backgroundColor: DARK.panel, alignItems: "center" },
   lightboxNavBtnDisabled: { opacity: 0.35 },
   lightboxNavBtnText: { fontFamily: font.bodySemibold, fontSize: 12.5, color: color.white },
