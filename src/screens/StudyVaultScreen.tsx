@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -204,6 +204,52 @@ function SpeedMathsShortcuts() {
   );
 }
 
+function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
+  const [lightbox, setLightbox] = useState<number | null>(null);
+  if (pages.length === 0) return null;
+  return (
+    <View style={styles.notesGallery}>
+      <Text style={styles.notesGalleryLbl}>TEACHER'S HANDWRITTEN NOTES ({pages.length} PAGE{pages.length > 1 ? "S" : ""})</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={styles.notesThumbRow}>
+          {pages.map((url, i) => (
+            <Pressable key={url} style={styles.notesThumb} onPress={() => setLightbox(i)}>
+              <Image source={{ uri: url }} style={styles.notesThumbImg} resizeMode="cover" />
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+      <Modal visible={lightbox !== null} transparent animationType="fade" onRequestClose={() => setLightbox(null)}>
+        <Pressable style={styles.lightboxBackdrop} onPress={() => setLightbox(null)}>
+          <Pressable style={styles.lightboxInner} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.lightboxHead}>
+              <Text style={styles.lightboxHeadText}>{title} — page {(lightbox ?? 0) + 1} of {pages.length}</Text>
+              <Pressable onPress={() => setLightbox(null)}><Text style={styles.lightboxClose}>✕</Text></Pressable>
+            </View>
+            {lightbox !== null && <Image source={{ uri: pages[lightbox] }} style={styles.lightboxImg} resizeMode="contain" />}
+            <View style={styles.lightboxNav}>
+              <Pressable
+                disabled={lightbox === 0}
+                style={[styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
+                onPress={() => setLightbox((i) => (i ?? 0) - 1)}
+              >
+                <Text style={styles.lightboxNavBtnText}>← Prev</Text>
+              </Pressable>
+              <Pressable
+                disabled={lightbox === pages.length - 1}
+                style={[styles.lightboxNavBtn, lightbox === pages.length - 1 && styles.lightboxNavBtnDisabled]}
+                onPress={() => setLightbox((i) => (i ?? 0) + 1)}
+              >
+                <Text style={styles.lightboxNavBtnText}>Next →</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 function SubConceptPanel({ notes }: { notes: SubConceptNote[] }) {
   const [idx, setIdx] = useState(0);
   const note = notes[idx];
@@ -225,6 +271,7 @@ function SubConceptPanel({ notes }: { notes: SubConceptNote[] }) {
         <Text style={styles.conceptTitle}>{note.name}</Text>
         <Text style={styles.conceptBody}>{note.body}</Text>
         {note.formula && <FormulaLines eq={note.formula} />}
+        <NotesGallery key={note.name} title={note.name} pages={note.notesPages ?? []} />
       </View>
     </View>
   );
@@ -290,6 +337,7 @@ export default function StudyVaultScreen() {
               </View>
 
               {ch.subConcepts && <SubConceptPanel key={active} notes={ch.subConcepts} />}
+              {ch.notesPages && <NotesGallery key={active} title={ch.label} pages={ch.notesPages} />}
 
               {ch.example && (
                 <View style={styles.exampleBox}>
@@ -350,6 +398,22 @@ const styles = StyleSheet.create({
   subConceptChipText: { fontFamily: font.bodySemibold, fontSize: 11.5, color: DARK.text },
   subConceptChipTextActive: { color: color.white },
   subConceptBody: { backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: radius.md, padding: 15 },
+
+  notesGallery: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: DARK.line2 },
+  notesGalleryLbl: { fontFamily: font.bodySemibold, fontSize: 10, letterSpacing: 0.5, color: DARK.text, marginBottom: 10 },
+  notesThumbRow: { flexDirection: "row", gap: 10 },
+  notesThumb: { width: 84, height: 112, borderRadius: 8, borderWidth: 1.5, borderColor: DARK.line2, backgroundColor: color.white, overflow: "hidden" },
+  notesThumbImg: { width: "100%", height: "100%" },
+  lightboxBackdrop: { flex: 1, backgroundColor: "rgba(5,10,20,0.9)", alignItems: "center", justifyContent: "center", padding: 20 },
+  lightboxInner: { backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: radius.md, padding: 14, width: "100%", maxHeight: "90%" },
+  lightboxHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  lightboxHeadText: { fontFamily: font.bodySemibold, fontSize: 12, color: DARK.text, flexShrink: 1, paddingRight: 10 },
+  lightboxClose: { fontSize: 18, color: DARK.text, padding: 4 },
+  lightboxImg: { width: "100%", height: 420, borderRadius: 8, backgroundColor: color.white },
+  lightboxNav: { flexDirection: "row", gap: 10, marginTop: 12 },
+  lightboxNavBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: DARK.line2, backgroundColor: DARK.panel, alignItems: "center" },
+  lightboxNavBtnDisabled: { opacity: 0.35 },
+  lightboxNavBtnText: { fontFamily: font.bodySemibold, fontSize: 12.5, color: color.white },
 
   exampleBox: { marginTop: 18, backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: radius.md, padding: 16 },
   elbl: { fontFamily: font.bodySemibold, fontSize: 10.5, letterSpacing: 0.4, color: "#e8305a", marginBottom: 8 },
