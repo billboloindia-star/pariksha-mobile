@@ -1,4 +1,4 @@
-import { useState, useRef, type ElementRef } from "react";
+import { useState, useRef } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder, TextInput, Animated } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -239,8 +239,6 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
   const selectingRef = useRef(selecting);
   selectingRef.current = selecting;
   const imgBoxRef = useRef({ width: 0, height: 0 });
-  const wrapOriginRef = useRef({ x: 0, y: 0 });
-  const wrapViewRef = useRef<ElementRef<typeof View>>(null);
   const naturalRef = useRef({ width: 1, height: 1 });
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -263,27 +261,18 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
     translateAnim.setValue({ x: 0, y: 0 });
   };
 
-  const measureWrap = () => {
-    wrapViewRef.current?.measureInWindow((x, y, width, height) => {
-      wrapOriginRef.current = { x, y };
-      if (width && height) imgBoxRef.current = { width, height };
-    });
-  };
-
-  // pageX/pageY (absolute screen position) are what RN's PanResponder
-  // touches reliably carry - locationX/Y are relative to whatever nested
-  // view actually received the touch (unreliable once the Image sits
-  // inside an Animated.View), so crop math has to work in page space too.
-  const fractionAt = (pageX: number, pageY: number) => {
+  // locationX/Y are relative to the view that actually caught the touch,
+  // which stops being the responder's own wrapper once a child view sits
+  // in between - the Animated.View below has pointerEvents="none" so it
+  // can never "steal" that target identity, keeping these reliably
+  // relative to this wrapper itself.
+  const fractionAt = (locationX: number, locationY: number) => {
     const box = imgBoxRef.current;
     const nat = naturalRef.current;
-    const origin = wrapOriginRef.current;
     if (!box.width || !box.height) return null;
     const rect = containRect(box.width, box.height, nat.width, nat.height);
-    const localX = pageX - origin.x;
-    const localY = pageY - origin.y;
-    const x = Math.max(0, Math.min(1, (localX - rect.x) / rect.w));
-    const y = Math.max(0, Math.min(1, (localY - rect.y) / rect.h));
+    const x = Math.max(0, Math.min(1, (locationX - rect.x) / rect.w));
+    const y = Math.max(0, Math.min(1, (locationY - rect.y) / rect.h));
     return { x, y };
   };
 
@@ -297,8 +286,7 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
         (Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5),
       onPanResponderGrant: (e) => {
         if (selectingRef.current) {
-          measureWrap();
-          const f = fractionAt(e.nativeEvent.pageX, e.nativeEvent.pageY);
+          const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
           if (f) { dragStartRef.current = f; setSelection(null); }
           return;
         }
@@ -314,7 +302,7 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
       onPanResponderMove: (e) => {
         if (selectingRef.current) {
           if (!dragStartRef.current) return;
-          const f = fractionAt(e.nativeEvent.pageX, e.nativeEvent.pageY);
+          const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
           if (!f) return;
           const s = dragStartRef.current;
           setSelection({ x: Math.min(s.x, f.x), y: Math.min(s.y, f.y), width: Math.abs(f.x - s.x), height: Math.abs(f.y - s.y) });
@@ -405,15 +393,16 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
             )}
             {lightbox !== null && (
               <View
-                ref={wrapViewRef}
                 style={fullscreen ? styles.lightboxImgWrapFull : styles.lightboxImgWrap}
                 onLayout={(e) => {
                   imgBoxRef.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height };
-                  measureWrap();
                 }}
                 {...responder.panHandlers}
               >
-                <Animated.View style={{ flex: 1, transform: [{ translateX: translateAnim.x }, { translateY: translateAnim.y }, { scale: scaleAnim }] }}>
+                <Animated.View
+                  pointerEvents="none"
+                  style={{ flex: 1, transform: [{ translateX: translateAnim.x }, { translateY: translateAnim.y }, { scale: scaleAnim }] }}
+                >
                   <Image
                     source={{ uri: pages[lightbox] }}
                     style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
