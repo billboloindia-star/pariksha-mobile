@@ -225,6 +225,24 @@ export default function HomeScreen() {
         </LinearGradient>
       )}
 
+      {session && (
+        <LinearGradient
+          colors={["#0a1b36", "#1b3a6b", "#3fa5ff"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.speedCard}
+        >
+          <Pressable style={styles.speedCardInner} onPress={() => rootNavigation.navigate("NoteClips")}>
+            <View style={styles.speedIconWrap}><Text style={{ fontSize: 18 }}>✂️</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.speedTitle}>My Clips</Text>
+              <Text style={styles.speedSub}>Cropped regions you've saved from handwritten notes</Text>
+            </View>
+            <Text style={styles.speedGo}>Go →</Text>
+          </Pressable>
+        </LinearGradient>
+      )}
+
       {history && history.length > 0 ? (
         <LinearGradient
           colors={["#0a1b36", "#1d4ed8", "#38bdf8"]}

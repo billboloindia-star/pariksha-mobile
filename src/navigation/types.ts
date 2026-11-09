@@ -16,4 +16,5 @@ export type RootStackParamList = {
   TargetExam: undefined;
   StudyVault: undefined;
   Bookmarks: undefined;
+  NoteClips: undefined;
 };

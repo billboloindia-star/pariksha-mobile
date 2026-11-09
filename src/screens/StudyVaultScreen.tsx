@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder, TextInput } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -9,10 +9,26 @@ import {
   findSquareExample, findCubeExample, squareRootSteps, cubeRootSteps, landmarkNums,
   type ChapterKey, type SubConceptNote,
 } from "../../shared/studyVault";
+import * as api from "../../shared/api";
+import type { CropBox } from "../../shared/types";
 import { color, font, radius, space } from "../theme";
 import type { RootStackParamList } from "../navigation/types";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "StudyVault">;
+
+/** Same letterboxing math as web's containRect - the rendered Image box is
+ * often larger than the actual pixels it draws (object-fit:contain), so a
+ * touch's position within the box isn't the same as its position on the
+ * real image content. */
+function containRect(boxW: number, boxH: number, natW: number, natH: number) {
+  const boxRatio = boxW / boxH;
+  const natRatio = natW / natH;
+  let w: number, h: number;
+  if (natRatio > boxRatio) { w = boxW; h = boxW / natRatio; } else { h = boxH; w = boxH * natRatio; }
+  return { x: (boxW - w) / 2, y: (boxH - h) / 2, w, h };
+}
+
+type NoteClipMeta = { section: string; chapter: string; subConcept?: string };
 
 function Inline({ text, style, accentStyle, boldStyle }: { text: string; style: any; accentStyle: any; boldStyle: any }) {
   return (
@@ -204,32 +220,86 @@ function SpeedMathsShortcuts() {
   );
 }
 
-function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
+function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; meta: NoteClipMeta }) {
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selection, setSelection] = useState<CropBox | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const insets = useSafeAreaInsets();
+  const canClip = api.backendEnabled() && !!api.getSession();
 
-  // Swipe left/right on the page image to go next/prev - refs keep the
-  // PanResponder (created once) reading live state instead of a stale closure.
+  // Refs keep the single PanResponder (created once) reading live state
+  // instead of a stale closure, and carry layout info from onLayout/onLoad.
   const lightboxRef = useRef(lightbox);
   lightboxRef.current = lightbox;
   const pagesLenRef = useRef(pages.length);
   pagesLenRef.current = pages.length;
-  const swipeResponder = useRef(
+  const selectingRef = useRef(selecting);
+  selectingRef.current = selecting;
+  const imgBoxRef = useRef({ width: 0, height: 0 });
+  const naturalRef = useRef({ width: 1, height: 1 });
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const fractionAt = (locationX: number, locationY: number) => {
+    const box = imgBoxRef.current;
+    const nat = naturalRef.current;
+    if (!box.width || !box.height) return null;
+    const rect = containRect(box.width, box.height, nat.width, nat.height);
+    const x = Math.max(0, Math.min(1, (locationX - rect.x) / rect.w));
+    const y = Math.max(0, Math.min(1, (locationY - rect.y) / rect.h));
+    return { x, y };
+  };
+
+  const responder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onStartShouldSetPanResponder: () => selectingRef.current,
+      onMoveShouldSetPanResponder: (_e, g) =>
+        selectingRef.current || (Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5),
+      onPanResponderGrant: (e) => {
+        if (!selectingRef.current) return;
+        const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
+        if (f) { dragStartRef.current = f; setSelection(null); }
+      },
+      onPanResponderMove: (e) => {
+        if (!selectingRef.current || !dragStartRef.current) return;
+        const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
+        if (!f) return;
+        const s = dragStartRef.current;
+        setSelection({ x: Math.min(s.x, f.x), y: Math.min(s.y, f.y), width: Math.abs(f.x - s.x), height: Math.abs(f.y - s.y) });
+      },
       onPanResponderRelease: (_e, g) => {
+        if (selectingRef.current) { dragStartRef.current = null; return; }
         const cur = lightboxRef.current;
         if (cur === null) return;
-        if (g.dx <= -50 && cur < pagesLenRef.current - 1) setLightbox(cur + 1);
-        else if (g.dx >= 50 && cur > 0) setLightbox(cur - 1);
+        if (g.dx <= -50 && cur < pagesLenRef.current - 1) changePage(cur + 1);
+        else if (g.dx >= 50 && cur > 0) changePage(cur - 1);
       },
     })
   ).current;
 
   if (pages.length === 0) return null;
 
-  const closeLightbox = () => { setLightbox(null); setFullscreen(false); };
+  const closeLightbox = () => { setLightbox(null); setFullscreen(false); setSelecting(false); setSelection(null); };
+  const changePage = (next: number) => { setLightbox(next); setSelecting(false); setSelection(null); setNoteText(""); setSaveState("idle"); };
+
+  const saveClip = async () => {
+    if (!selection || lightbox === null || selection.width < 0.02 || selection.height < 0.02) return;
+    setSaveState("saving");
+    try {
+      await api.addNoteClip({
+        section: meta.section, chapter: meta.chapter, subConcept: meta.subConcept,
+        sourceImageUrl: pages[lightbox], cropBox: selection, note: noteText.trim() || undefined,
+      });
+      setSaveState("saved");
+      setTimeout(() => { setSelecting(false); setSelection(null); setNoteText(""); setSaveState("idle"); }, 1200);
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  const showSavePanel = selecting && selection && selection.width > 0.02 && selection.height > 0.02;
 
   return (
     <View style={styles.notesGallery}>
@@ -246,25 +316,44 @@ function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
       <Modal visible={lightbox !== null} transparent={!fullscreen} animationType="fade" onRequestClose={fullscreen ? () => setFullscreen(false) : closeLightbox}>
         <Pressable
           style={fullscreen ? styles.lightboxBackdropFull : styles.lightboxBackdrop}
-          onPress={fullscreen ? undefined : closeLightbox}
+          onPress={fullscreen || selecting ? undefined : closeLightbox}
         >
           <Pressable style={fullscreen ? styles.lightboxInnerFull : styles.lightboxInner} onPress={(e) => e.stopPropagation()}>
             {!fullscreen && (
               <View style={styles.lightboxHead}>
-                <Text style={styles.lightboxHeadText}>{title} — page {(lightbox ?? 0) + 1} of {pages.length}</Text>
+                <Text style={styles.lightboxHeadText} numberOfLines={1}>{title} — page {(lightbox ?? 0) + 1} of {pages.length}</Text>
                 <View style={styles.lightboxHeadBtns}>
+                  {canClip && (
+                    <Pressable onPress={() => { setSelecting((s) => !s); setSelection(null); }}>
+                      <Text style={[styles.lightboxExpand, selecting && styles.lightboxExpandActive]}>✂️</Text>
+                    </Pressable>
+                  )}
                   <Pressable onPress={() => setFullscreen(true)}><Text style={styles.lightboxExpand}>⛶</Text></Pressable>
                   <Pressable onPress={closeLightbox}><Text style={styles.lightboxClose}>✕</Text></Pressable>
                 </View>
               </View>
             )}
             {lightbox !== null && (
-              <View style={fullscreen ? styles.lightboxImgWrapFull : undefined} {...swipeResponder.panHandlers}>
+              <View
+                style={fullscreen ? styles.lightboxImgWrapFull : styles.lightboxImgWrap}
+                onLayout={(e) => { imgBoxRef.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height }; }}
+                {...responder.panHandlers}
+              >
                 <Image
                   source={{ uri: pages[lightbox] }}
                   style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
                   resizeMode="contain"
+                  onLoad={(e) => {
+                    const src = e.nativeEvent.source;
+                    if (src?.width && src?.height) naturalRef.current = { width: src.width, height: src.height };
+                  }}
                 />
+                {selection && (
+                  <View
+                    pointerEvents="none"
+                    style={[styles.cropBox, { left: `${selection.x * 100}%`, top: `${selection.y * 100}%`, width: `${selection.width * 100}%`, height: `${selection.height * 100}%` }]}
+                  />
+                )}
               </View>
             )}
             {fullscreen && (
@@ -272,11 +361,33 @@ function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
                 <Text style={styles.lightboxExpand}>⤢</Text>
               </Pressable>
             )}
+            {showSavePanel && (
+              <View style={styles.clipSavePanel}>
+                <TextInput
+                  style={styles.clipNoteInput}
+                  value={noteText}
+                  onChangeText={setNoteText}
+                  placeholder="Add a note (optional)…"
+                  placeholderTextColor={color.inkFaint}
+                  multiline
+                />
+                <View style={styles.clipSaveRow}>
+                  <Pressable style={styles.clipCancelBtn} onPress={() => { setSelection(null); setNoteText(""); setSaveState("idle"); }}>
+                    <Text style={styles.clipCancelBtnText}>Discard</Text>
+                  </Pressable>
+                  <Pressable style={styles.clipSaveBtn} disabled={saveState === "saving"} onPress={saveClip}>
+                    <Text style={styles.clipSaveBtnText}>
+                      {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : saveState === "error" ? "Try again" : "Save as clip"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
             <View style={fullscreen ? [styles.lightboxNavFull, { bottom: insets.bottom + 20 }] : styles.lightboxNav}>
               <Pressable
                 disabled={lightbox === 0}
                 style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
-                onPress={() => setLightbox((i) => (i ?? 0) - 1)}
+                onPress={() => changePage((lightbox ?? 0) - 1)}
               >
                 <Text style={styles.lightboxNavBtnText}>← Prev</Text>
               </Pressable>
@@ -284,7 +395,7 @@ function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
               <Pressable
                 disabled={lightbox === pages.length - 1}
                 style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === pages.length - 1 && styles.lightboxNavBtnDisabled]}
-                onPress={() => setLightbox((i) => (i ?? 0) + 1)}
+                onPress={() => changePage((lightbox ?? 0) + 1)}
               >
                 <Text style={styles.lightboxNavBtnText}>Next →</Text>
               </Pressable>
@@ -296,7 +407,7 @@ function NotesGallery({ title, pages }: { title: string; pages: string[] }) {
   );
 }
 
-function SubConceptPanel({ notes }: { notes: SubConceptNote[] }) {
+function SubConceptPanel({ notes, chapterLabel }: { notes: SubConceptNote[]; chapterLabel: string }) {
   const [idx, setIdx] = useState(0);
   const note = notes[idx];
   return (
@@ -317,7 +428,7 @@ function SubConceptPanel({ notes }: { notes: SubConceptNote[] }) {
         <Text style={styles.conceptTitle}>{note.name}</Text>
         <Text style={styles.conceptBody}>{note.body}</Text>
         {note.formula && <FormulaLines eq={note.formula} />}
-        <NotesGallery key={note.name} title={note.name} pages={note.notesPages ?? []} />
+        <NotesGallery key={note.name} title={note.name} pages={note.notesPages ?? []} meta={{ section: "Quant", chapter: chapterLabel, subConcept: note.name }} />
       </View>
     </View>
   );
@@ -382,8 +493,8 @@ export default function StudyVaultScreen() {
                 ))}
               </View>
 
-              {ch.subConcepts && <SubConceptPanel notes={ch.subConcepts} />}
-              {!ch.subConcepts && ch.notesPages && <NotesGallery title={ch.label} pages={ch.notesPages} />}
+              {ch.subConcepts && <SubConceptPanel notes={ch.subConcepts} chapterLabel={ch.label} />}
+              {!ch.subConcepts && ch.notesPages && <NotesGallery title={ch.label} pages={ch.notesPages} meta={{ section: "Quant", chapter: ch.label }} />}
 
               {ch.example && (
                 <View style={styles.exampleBox}>
@@ -456,13 +567,24 @@ const styles = StyleSheet.create({
   lightboxHeadText: { fontFamily: font.bodySemibold, fontSize: 12, color: DARK.text, flexShrink: 1, paddingRight: 10 },
   lightboxHeadBtns: { flexDirection: "row", alignItems: "center", gap: 14 },
   lightboxExpand: { fontSize: 18, color: DARK.text, padding: 4 },
+  lightboxExpandActive: { color: "#3fa5ff" },
   lightboxClose: { fontSize: 18, color: DARK.text, padding: 4 },
-  lightboxImg: { width: "100%", height: 420, borderRadius: 8, backgroundColor: color.white },
+  lightboxImgWrap: { position: "relative", width: "100%", height: 420 },
+  lightboxImg: { width: "100%", height: "100%", borderRadius: 8, backgroundColor: color.white },
   lightboxNav: { flexDirection: "row", gap: 10, marginTop: 12 },
+
+  cropBox: { position: "absolute", borderWidth: 2, borderColor: "#3fa5ff", borderStyle: "dashed", backgroundColor: "rgba(63,165,255,0.18)" },
+  clipSavePanel: { backgroundColor: DARK.panel, borderWidth: 1, borderColor: DARK.line2, borderRadius: 10, padding: 10, marginTop: 12, gap: 8 },
+  clipNoteInput: { width: "100%", minHeight: 44, backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: 8, color: color.white, fontSize: 12.5, padding: 8, fontFamily: font.body, textAlignVertical: "top" },
+  clipSaveRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 8 },
+  clipCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5, borderColor: DARK.line2 },
+  clipCancelBtnText: { fontFamily: font.bodySemibold, fontSize: 12, color: DARK.text },
+  clipSaveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: "#2176d1" },
+  clipSaveBtnText: { fontFamily: font.bodySemibold, fontSize: 12, color: color.white },
 
   lightboxBackdropFull: { flex: 1, backgroundColor: "#000" },
   lightboxInnerFull: { flex: 1, width: "100%" },
-  lightboxImgWrapFull: { flex: 1, width: "100%" },
+  lightboxImgWrapFull: { flex: 1, width: "100%", position: "relative" },
   lightboxImgFull: { flex: 1, width: "100%", backgroundColor: "#000" },
   lightboxShrinkBtn: { position: "absolute", top: 44, right: 16, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center", zIndex: 2 },
   lightboxNavFull: { position: "absolute", bottom: 28, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10, zIndex: 2 },
