@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder, TextInput } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder, TextInput, Animated } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -242,6 +242,25 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
   const naturalRef = useRef({ width: 1, height: 1 });
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Pinch-zoom + pan (native-driven, so dragging stays smooth) - only
+  // active while not crop-selecting, reset whenever selecting/page/close.
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const translateAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const scaleRef = useRef(1);
+  const translateRef = useRef({ x: 0, y: 0 });
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef(1);
+  const panStartRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+
+  const resetZoom = () => {
+    scaleRef.current = 1;
+    translateRef.current = { x: 0, y: 0 };
+    pinchStartDistRef.current = null;
+    panStartRef.current = null;
+    scaleAnim.setValue(1);
+    translateAnim.setValue({ x: 0, y: 0 });
+  };
+
   const fractionAt = (locationX: number, locationY: number) => {
     const box = imgBoxRef.current;
     const nat = naturalRef.current;
@@ -254,23 +273,56 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
 
   const responder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => selectingRef.current,
-      onMoveShouldSetPanResponder: (_e, g) =>
-        selectingRef.current || (Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5),
+      onStartShouldSetPanResponder: (e) => selectingRef.current || e.nativeEvent.touches.length === 2,
+      onMoveShouldSetPanResponder: (e, g) =>
+        selectingRef.current ||
+        e.nativeEvent.touches.length === 2 ||
+        (scaleRef.current > 1.02 && e.nativeEvent.touches.length === 1) ||
+        (Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5),
       onPanResponderGrant: (e) => {
-        if (!selectingRef.current) return;
-        const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
-        if (f) { dragStartRef.current = f; setSelection(null); }
+        if (selectingRef.current) {
+          const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
+          if (f) { dragStartRef.current = f; setSelection(null); }
+          return;
+        }
+        const touches = e.nativeEvent.touches;
+        if (touches.length === 2) {
+          const dist = Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
+          pinchStartDistRef.current = dist;
+          pinchStartScaleRef.current = scaleRef.current;
+        } else if (touches.length === 1 && scaleRef.current > 1.02) {
+          panStartRef.current = { x: touches[0].pageX, y: touches[0].pageY, tx: translateRef.current.x, ty: translateRef.current.y };
+        }
       },
       onPanResponderMove: (e) => {
-        if (!selectingRef.current || !dragStartRef.current) return;
-        const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
-        if (!f) return;
-        const s = dragStartRef.current;
-        setSelection({ x: Math.min(s.x, f.x), y: Math.min(s.y, f.y), width: Math.abs(f.x - s.x), height: Math.abs(f.y - s.y) });
+        if (selectingRef.current) {
+          if (!dragStartRef.current) return;
+          const f = fractionAt(e.nativeEvent.locationX, e.nativeEvent.locationY);
+          if (!f) return;
+          const s = dragStartRef.current;
+          setSelection({ x: Math.min(s.x, f.x), y: Math.min(s.y, f.y), width: Math.abs(f.x - s.x), height: Math.abs(f.y - s.y) });
+          return;
+        }
+        const touches = e.nativeEvent.touches;
+        if (touches.length === 2) {
+          const dist = Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
+          if (pinchStartDistRef.current == null) { pinchStartDistRef.current = dist; pinchStartScaleRef.current = scaleRef.current; return; }
+          const next = Math.max(1, Math.min(4, pinchStartScaleRef.current * (dist / pinchStartDistRef.current)));
+          scaleRef.current = next;
+          scaleAnim.setValue(next);
+        } else if (touches.length === 1 && panStartRef.current) {
+          const p = panStartRef.current;
+          const tx = p.tx + (touches[0].pageX - p.x);
+          const ty = p.ty + (touches[0].pageY - p.y);
+          translateRef.current = { x: tx, y: ty };
+          translateAnim.setValue({ x: tx, y: ty });
+        }
       },
       onPanResponderRelease: (_e, g) => {
         if (selectingRef.current) { dragStartRef.current = null; return; }
+        pinchStartDistRef.current = null;
+        panStartRef.current = null;
+        if (scaleRef.current > 1.02) return; // was pinching/panning - don't also treat as a swipe
         const cur = lightboxRef.current;
         if (cur === null) return;
         if (g.dx <= -50 && cur < pagesLenRef.current - 1) changePage(cur + 1);
@@ -281,8 +333,9 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
 
   if (pages.length === 0) return null;
 
-  const closeLightbox = () => { setLightbox(null); setFullscreen(false); setSelecting(false); setSelection(null); };
-  const changePage = (next: number) => { setLightbox(next); setSelecting(false); setSelection(null); setNoteText(""); setSaveState("idle"); };
+  const closeLightbox = () => { setLightbox(null); setFullscreen(false); setSelecting(false); setSelection(null); resetZoom(); };
+  const changePage = (next: number) => { setLightbox(next); setSelecting(false); setSelection(null); setNoteText(""); setSaveState("idle"); resetZoom(); };
+  const toggleSelecting = () => { setSelecting((s) => !s); setSelection(null); resetZoom(); };
 
   const saveClip = async () => {
     if (!selection || lightbox === null || selection.width < 0.02 || selection.height < 0.02) return;
@@ -324,7 +377,7 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
                 <Text style={styles.lightboxHeadText} numberOfLines={1}>{title} — page {(lightbox ?? 0) + 1} of {pages.length}</Text>
                 <View style={styles.lightboxHeadBtns}>
                   {canClip && (
-                    <Pressable onPress={() => { setSelecting((s) => !s); setSelection(null); }}>
+                    <Pressable onPress={toggleSelecting}>
                       <Text style={[styles.lightboxExpand, selecting && styles.lightboxExpandActive]}>✂️</Text>
                     </Pressable>
                   )}
@@ -339,15 +392,17 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
                 onLayout={(e) => { imgBoxRef.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height }; }}
                 {...responder.panHandlers}
               >
-                <Image
-                  source={{ uri: pages[lightbox] }}
-                  style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
-                  resizeMode="contain"
-                  onLoad={(e) => {
-                    const src = e.nativeEvent.source;
-                    if (src?.width && src?.height) naturalRef.current = { width: src.width, height: src.height };
-                  }}
-                />
+                <Animated.View style={{ flex: 1, transform: [{ translateX: translateAnim.x }, { translateY: translateAnim.y }, { scale: scaleAnim }] }}>
+                  <Image
+                    source={{ uri: pages[lightbox] }}
+                    style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
+                    resizeMode="contain"
+                    onLoad={(e) => {
+                      const src = e.nativeEvent.source;
+                      if (src?.width && src?.height) naturalRef.current = { width: src.width, height: src.height };
+                    }}
+                  />
+                </Animated.View>
                 {selection && (
                   <View
                     pointerEvents="none"
@@ -357,12 +412,19 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
               </View>
             )}
             {fullscreen && (
-              <Pressable style={[styles.lightboxShrinkBtn, { top: insets.top + 12 }]} onPress={() => setFullscreen(false)}>
-                <Text style={styles.lightboxExpand}>⤢</Text>
-              </Pressable>
+              <View style={[styles.lightboxTopBtns, { top: insets.top + 12 }]}>
+                {canClip && (
+                  <Pressable style={[styles.lightboxShrinkBtn, selecting && styles.lightboxExpandActiveBg]} onPress={toggleSelecting}>
+                    <Text style={styles.lightboxExpand}>✂️</Text>
+                  </Pressable>
+                )}
+                <Pressable style={styles.lightboxShrinkBtn} onPress={() => setFullscreen(false)}>
+                  <Text style={styles.lightboxExpand}>⤢</Text>
+                </Pressable>
+              </View>
             )}
             {showSavePanel && (
-              <View style={styles.clipSavePanel}>
+              <View style={fullscreen ? [styles.clipSavePanel, styles.clipSavePanelFull, { bottom: insets.bottom + 20 }] : styles.clipSavePanel}>
                 <TextInput
                   style={styles.clipNoteInput}
                   value={noteText}
@@ -383,23 +445,25 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
                 </View>
               </View>
             )}
-            <View style={fullscreen ? [styles.lightboxNavFull, { bottom: insets.bottom + 20 }] : styles.lightboxNav}>
-              <Pressable
-                disabled={lightbox === 0}
-                style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
-                onPress={() => changePage((lightbox ?? 0) - 1)}
-              >
-                <Text style={styles.lightboxNavBtnText}>← Prev</Text>
-              </Pressable>
-              {fullscreen && <Text style={styles.lightboxNavFullCount}>{(lightbox ?? 0) + 1} / {pages.length}</Text>}
-              <Pressable
-                disabled={lightbox === pages.length - 1}
-                style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === pages.length - 1 && styles.lightboxNavBtnDisabled]}
-                onPress={() => changePage((lightbox ?? 0) + 1)}
-              >
-                <Text style={styles.lightboxNavBtnText}>Next →</Text>
-              </Pressable>
-            </View>
+            {!showSavePanel && (
+              <View style={fullscreen ? [styles.lightboxNavFull, { bottom: insets.bottom + 20 }] : styles.lightboxNav}>
+                <Pressable
+                  disabled={lightbox === 0}
+                  style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === 0 && styles.lightboxNavBtnDisabled]}
+                  onPress={() => changePage((lightbox ?? 0) - 1)}
+                >
+                  <Text style={styles.lightboxNavBtnText}>← Prev</Text>
+                </Pressable>
+                {fullscreen && <Text style={styles.lightboxNavFullCount}>{(lightbox ?? 0) + 1} / {pages.length}</Text>}
+                <Pressable
+                  disabled={lightbox === pages.length - 1}
+                  style={[fullscreen ? styles.lightboxNavBtnFull : styles.lightboxNavBtn, lightbox === pages.length - 1 && styles.lightboxNavBtnDisabled]}
+                  onPress={() => changePage((lightbox ?? 0) + 1)}
+                >
+                  <Text style={styles.lightboxNavBtnText}>Next →</Text>
+                </Pressable>
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -575,6 +639,7 @@ const styles = StyleSheet.create({
 
   cropBox: { position: "absolute", borderWidth: 2, borderColor: "#3fa5ff", borderStyle: "dashed", backgroundColor: "rgba(63,165,255,0.18)" },
   clipSavePanel: { backgroundColor: DARK.panel, borderWidth: 1, borderColor: DARK.line2, borderRadius: 10, padding: 10, marginTop: 12, gap: 8 },
+  clipSavePanelFull: { position: "absolute", left: 16, right: 16, marginTop: 0, zIndex: 3, backgroundColor: "#0b1626", borderWidth: 1, borderColor: DARK.line2 },
   clipNoteInput: { width: "100%", minHeight: 44, backgroundColor: DARK.panel2, borderWidth: 1, borderColor: DARK.line2, borderRadius: 8, color: color.white, fontSize: 12.5, padding: 8, fontFamily: font.body, textAlignVertical: "top" },
   clipSaveRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 8 },
   clipCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1.5, borderColor: DARK.line2 },
@@ -584,9 +649,11 @@ const styles = StyleSheet.create({
 
   lightboxBackdropFull: { flex: 1, backgroundColor: "#000" },
   lightboxInnerFull: { flex: 1, width: "100%" },
-  lightboxImgWrapFull: { flex: 1, width: "100%", position: "relative" },
+  lightboxImgWrapFull: { flex: 1, width: "100%", position: "relative", overflow: "hidden" },
   lightboxImgFull: { flex: 1, width: "100%", backgroundColor: "#000" },
-  lightboxShrinkBtn: { position: "absolute", top: 44, right: 16, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center", zIndex: 2 },
+  lightboxTopBtns: { position: "absolute", right: 16, flexDirection: "row", gap: 10, zIndex: 2 },
+  lightboxShrinkBtn: { backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  lightboxExpandActiveBg: { backgroundColor: "rgba(63,165,255,0.5)" },
   lightboxNavFull: { position: "absolute", bottom: 28, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10, zIndex: 2 },
   lightboxNavBtnFull: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center" },
   lightboxNavFullCount: { fontFamily: font.bodySemibold, fontSize: 12, color: color.white, paddingHorizontal: 6 },
