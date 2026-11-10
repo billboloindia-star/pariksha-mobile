@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator, Image, Linking } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as api from "../../shared/api";
-import type { Bookmark } from "../../shared/types";
+import type { Attachment, Bookmark } from "../../shared/types";
 import { color, font, radius, space, shadow } from "../theme";
 import type { RootStackParamList } from "../navigation/types";
 
@@ -27,8 +29,36 @@ export default function BookmarksScreen() {
   const [filter, setFilter] = useState<string>("all");
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [attachDraft, setAttachDraft] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [practicing, setPracticing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const MAX_ATTACHMENTS = 3;
+
+  async function addAttachments() {
+    const room = MAX_ATTACHMENTS - attachDraft.length;
+    if (room <= 0) { setError(`Max ${MAX_ATTACHMENTS} attachments per note.`); return; }
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ["application/pdf", "image/*"],
+      multiple: true,
+      copyToCacheDirectory: true,
+    });
+    if (res.canceled || !res.assets.length) return;
+    setUploading(true);
+    try {
+      const uploaded: Attachment[] = [];
+      for (const f of res.assets.slice(0, room)) {
+        const fileBase64 = await FileSystem.readAsStringAsync(f.uri, { encoding: FileSystem.EncodingType.Base64 });
+        uploaded.push(await api.uploadAttachmentFromBase64(f.name, f.mimeType || "application/octet-stream", fileBase64));
+      }
+      setAttachDraft((prev) => [...prev, ...uploaded]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't attach that file.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   useEffect(() => {
     api.fetchBookmarks().then(setBookmarks).catch(() => setBookmarks([]));
@@ -59,12 +89,23 @@ export default function BookmarksScreen() {
 
   async function saveNote(b: Bookmark) {
     try {
-      const updated = await api.updateBookmarkNote(b.bookmarkId, noteDraft);
+      const updated = await api.updateBookmarkNote(b.bookmarkId, noteDraft, attachDraft);
       setBookmarks((prev) => prev?.map((x) => (x.bookmarkId === b.bookmarkId ? updated : x)) ?? null);
     } catch {
       setError("Couldn't save that note — try again.");
     }
     setEditingNote(null);
+    setAttachDraft([]);
+  }
+
+  async function removeAttachment(b: Bookmark, i: number) {
+    const next = (b.attachments ?? []).filter((_, idx) => idx !== i);
+    try {
+      const updated = await api.updateBookmarkNote(b.bookmarkId, b.note ?? "", next);
+      setBookmarks((prev) => prev?.map((x) => (x.bookmarkId === b.bookmarkId ? updated : x)) ?? null);
+    } catch {
+      setError("Couldn't remove that attachment — try again.");
+    }
   }
 
   async function remove(b: Bookmark) {
@@ -155,16 +196,58 @@ export default function BookmarksScreen() {
                               placeholderTextColor={color.inkFaint}
                               multiline
                             />
+                            <View style={styles.attachRow}>
+                              <Pressable style={styles.attachBtn} onPress={addAttachments} disabled={uploading}>
+                                <Text style={styles.attachBtnText}>{uploading ? "Uploading…" : "📎 Attach image or PDF"}</Text>
+                              </Pressable>
+                              {attachDraft.length > 0 && <Text style={styles.muted}>{attachDraft.length}/{MAX_ATTACHMENTS}</Text>}
+                            </View>
+                            {attachDraft.length > 0 && (
+                              <View style={styles.attachGrid}>
+                                {attachDraft.map((a, i) => (
+                                  <View style={styles.attachCard} key={a.url}>
+                                    {a.fileType.startsWith("image/") ? (
+                                      <Image source={{ uri: a.url }} style={styles.attachThumb} />
+                                    ) : (
+                                      <View style={styles.attachPdf}><Text style={{ fontSize: 18 }}>📄</Text><Text style={styles.attachPdfText}>PDF</Text></View>
+                                    )}
+                                    <Text style={styles.attachName} numberOfLines={1}>{a.fileName}</Text>
+                                    <Pressable style={styles.attachRemove} onPress={() => setAttachDraft((prev) => prev.filter((_, idx) => idx !== i))}>
+                                      <Text style={styles.attachRemoveText}>✕</Text>
+                                    </Pressable>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
                             <View style={styles.rowActions}>
                               <Pressable onPress={() => saveNote(b)}><Text style={styles.rowAction}>Save</Text></Pressable>
-                              <Pressable onPress={() => setEditingNote(null)}><Text style={[styles.rowAction, styles.rowActionDanger]}>Cancel</Text></Pressable>
+                              <Pressable onPress={() => { setEditingNote(null); setAttachDraft([]); }}><Text style={[styles.rowAction, styles.rowActionDanger]}>Cancel</Text></Pressable>
                             </View>
                           </View>
                         ) : (
                           <>
                             {b.note?.trim() ? <View style={styles.noteBox}><Text style={styles.noteText}><Text style={{ fontFamily: font.bodySemibold }}>Note: </Text>{b.note}</Text></View> : null}
+                            {b.attachments && b.attachments.length > 0 && (
+                              <View style={styles.attachGrid}>
+                                {b.attachments.map((a, i) => (
+                                  <View style={styles.attachCard} key={a.url}>
+                                    <Pressable onPress={() => Linking.openURL(a.url)}>
+                                      {a.fileType.startsWith("image/") ? (
+                                        <Image source={{ uri: a.url }} style={styles.attachThumb} />
+                                      ) : (
+                                        <View style={styles.attachPdf}><Text style={{ fontSize: 18 }}>📄</Text><Text style={styles.attachPdfText}>PDF</Text></View>
+                                      )}
+                                    </Pressable>
+                                    <Text style={styles.attachName} numberOfLines={1}>{a.fileName}</Text>
+                                    <Pressable style={styles.attachRemove} onPress={() => removeAttachment(b, i)}>
+                                      <Text style={styles.attachRemoveText}>✕</Text>
+                                    </Pressable>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
                             <View style={styles.rowActions}>
-                              <Pressable onPress={() => { setEditingNote(b.bookmarkId); setNoteDraft(b.note ?? ""); }}>
+                              <Pressable onPress={() => { setEditingNote(b.bookmarkId); setNoteDraft(b.note ?? ""); setAttachDraft(b.attachments ?? []); }}>
                                 <Text style={styles.rowAction}>{b.note?.trim() ? "Edit note" : "Add note"}</Text>
                               </Pressable>
                               <Pressable onPress={() => remove(b)}><Text style={[styles.rowAction, styles.rowActionDanger]}>Remove</Text></Pressable>
@@ -224,4 +307,16 @@ const styles = StyleSheet.create({
   rowActions: { flexDirection: "row", gap: 16 },
   rowAction: { fontFamily: font.bodySemibold, fontSize: 12, color: color.royal },
   rowActionDanger: { color: color.inkFaint },
+
+  attachRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
+  attachBtn: { borderWidth: 1.5, borderColor: color.surfaceSunken, borderStyle: "dashed", borderRadius: 9, paddingHorizontal: 12, paddingVertical: 7 },
+  attachBtnText: { fontFamily: font.bodySemibold, fontSize: 11.5, color: color.inkDim },
+  attachGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  attachCard: { width: 76, borderRadius: 10, overflow: "hidden", backgroundColor: color.surfaceAlt, position: "relative" },
+  attachThumb: { width: 76, height: 58, backgroundColor: color.surfaceSunken },
+  attachPdf: { width: 76, height: 58, alignItems: "center", justifyContent: "center", backgroundColor: "#fdecea", gap: 2 },
+  attachPdfText: { fontFamily: font.bodySemibold, fontSize: 8.5, color: color.red },
+  attachName: { fontFamily: font.body, fontSize: 8.5, color: color.inkDim, paddingHorizontal: 5, paddingVertical: 4 },
+  attachRemove: { position: "absolute", top: 3, right: 3, width: 16, height: 16, borderRadius: 8, backgroundColor: "rgba(16,24,40,0.65)", alignItems: "center", justifyContent: "center" },
+  attachRemoveText: { color: "#fff", fontSize: 9, lineHeight: 10 },
 });
