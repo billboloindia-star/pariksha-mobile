@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder, TextInput, Animated } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Modal, PanResponder, TextInput, Animated, Easing } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -228,6 +228,10 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
   const [noteText, setNoteText] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const insets = useSafeAreaInsets();
+  const pageTurnAnim = useRef(new Animated.Value(0)).current;
+  const turnRotate = pageTurnAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: ["-75deg", "0deg", "75deg"] });
+  const turnScaleX = pageTurnAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.92, 1, 0.92] });
+  const turnOpacity = pageTurnAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.4, 1, 0.4] });
   const canClip = api.backendEnabled() && !!api.getSession();
 
   // Refs keep the single PanResponder (created once) reading live state
@@ -339,7 +343,12 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
   if (pages.length === 0) return null;
 
   const closeLightbox = () => { setLightbox(null); setFullscreen(false); setSelecting(false); setSelection(null); resetZoom(); };
-  const changePage = (next: number) => { setLightbox(next); setSelecting(false); setSelection(null); setNoteText(""); setSaveState("idle"); resetZoom(); };
+  const changePage = (next: number) => {
+    const dir = next > (lightbox ?? 0) ? "next" : "prev";
+    setLightbox(next); setSelecting(false); setSelection(null); setNoteText(""); setSaveState("idle"); resetZoom();
+    pageTurnAnim.setValue(dir === "next" ? -1 : 1);
+    Animated.timing(pageTurnAnim, { toValue: 0, duration: 380, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  };
   const toggleSelecting = () => { setSelecting((s) => !s); setSelection(null); resetZoom(); };
 
   const saveClip = async () => {
@@ -401,17 +410,23 @@ function NotesGallery({ title, pages, meta }: { title: string; pages: string[]; 
               >
                 <Animated.View
                   pointerEvents="none"
-                  style={{ flex: 1, transform: [{ translateX: translateAnim.x }, { translateY: translateAnim.y }, { scale: scaleAnim }] }}
+                  style={{ flex: 1, transform: [{ perspective: 900 }, { rotateY: turnRotate }, { scaleX: turnScaleX }], opacity: turnOpacity }}
                 >
-                  <Image
-                    source={{ uri: pages[lightbox] }}
-                    style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
-                    resizeMode="contain"
-                    onLoad={(e) => {
-                      const src = e.nativeEvent.source;
-                      if (src?.width && src?.height) naturalRef.current = { width: src.width, height: src.height };
-                    }}
-                  />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={{ flex: 1, transform: [{ translateX: translateAnim.x }, { translateY: translateAnim.y }, { scale: scaleAnim }] }}
+                  >
+                    <Image
+                      key={lightbox}
+                      source={{ uri: pages[lightbox] }}
+                      style={fullscreen ? styles.lightboxImgFull : styles.lightboxImg}
+                      resizeMode="contain"
+                      onLoad={(e) => {
+                        const src = e.nativeEvent.source;
+                        if (src?.width && src?.height) naturalRef.current = { width: src.width, height: src.height };
+                      }}
+                    />
+                  </Animated.View>
                 </Animated.View>
                 {selection && (
                   <View
@@ -666,7 +681,7 @@ const styles = StyleSheet.create({
   lightboxExpandActiveBg: { backgroundColor: "rgba(63,165,255,0.5)" },
   lightboxNavFull: { position: "absolute", bottom: 28, left: 16, right: 16, flexDirection: "row", alignItems: "center", gap: 10, zIndex: 2 },
   lightboxNavBtnFull: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center" },
-  lightboxNavFullCount: { fontFamily: font.bodySemibold, fontSize: 12, color: color.white, paddingHorizontal: 6 },
+  lightboxNavFullCount: { fontFamily: font.bodySemibold, fontSize: 12, color: color.white, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 10, overflow: "hidden" },
   lightboxNavBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: DARK.line2, backgroundColor: DARK.panel, alignItems: "center" },
   lightboxNavBtnDisabled: { opacity: 0.35 },
   lightboxNavBtnText: { fontFamily: font.bodySemibold, fontSize: 12.5, color: color.white },
